@@ -146,9 +146,40 @@ public class ReportServiceImpl implements ReportService {
                 .reportDate(activeDate)
                 .shopId(shopId)
                 .shopName(shop.getShopName())
+                .reportType(shop.getShopCode())
                 .areaReports(areaReportsMap)
                 .charts(charts)
                 .build();
+    }
+
+    private static class DelayCalculationResult {
+        double planned = 0.0;
+        double controllable = 0.0;
+        double nonControllable = 0.0;
+        Map<String, Double> typeSums = new HashMap<>();
+    }
+
+    private DelayCalculationResult calculateDelaysGeneric(List<DelayLog> logs, Collection<DelayType> allTypes) {
+        DelayCalculationResult result = new DelayCalculationResult();
+        Map<Long, DelayType> typeMap = allTypes.stream().collect(Collectors.toMap(DelayType::getDelayTypeId, t -> t));
+        for (DelayLog log : logs) {
+            DelayType type = typeMap.get(log.getDelayTypeId());
+            if (type != null) {
+                double duration = log.getDelayHours() + (log.getDelayMinutes() / 60.0);
+                String code = type.getTypeCode().toUpperCase();
+                result.typeSums.put(code, result.typeSums.getOrDefault(code, 0.0) + duration);
+                
+                String grp = type.getDelayGroup().toUpperCase();
+                if ("P".equals(grp)) {
+                    result.planned += duration;
+                } else if ("C".equals(grp)) {
+                    result.controllable += duration;
+                } else if ("NC".equals(grp)) {
+                    result.nonControllable += duration;
+                }
+            }
+        }
+        return result;
     }
 
     private ReportResponse.AreaReport generateAreaReportDynamic(ShopArea area, LocalDate activeDate, LocalDate startDate, LocalDate endDate,
@@ -186,11 +217,17 @@ public class ReportServiceImpl implements ReportService {
                 dayProductionQty = 4000.0;
             } else if ("NORM".equalsIgnoreCase(area.getAreaCode())) {
                 dayProductionQty = 600.0;
+            } else if ("SMS_2".equalsIgnoreCase(area.getAreaCode())) {
+                dayProductionQty = 3000.0;
+            } else if ("SMS_3".equalsIgnoreCase(area.getAreaCode())) {
+                dayProductionQty = 3500.0;
+            } else {
+                dayProductionQty = 1000.0;
             }
         }
 
-        Map<String, Double> dayDelaysByGroup = calculateDelaysByGroup(dayDelays, delayTypeMap);
-        ReportResponse.Metrics dayMetrics = compileMetrics(dayAvailHours, dayProductionQty, 0.0, dayWorkingDays, dayShifts, dayDelaysByGroup, 1, 0.0);
+        DelayCalculationResult dayCalc = calculateDelaysGeneric(dayDelays, delayTypeMap.values());
+        ReportResponse.Metrics dayMetrics = compileMetrics(dayAvailHours, dayProductionQty, 0.0, dayWorkingDays, dayShifts, dayCalc, delayTypeMap.values(), 1, 0.0);
 
         // ---- B. Calculate Period Cumulative (MTD/YTD/Range) Metrics ----
         Map<LocalDate, ShiftOperationalLog> opLogMap = areaOpLogs.stream()
@@ -210,15 +247,25 @@ public class ReportServiceImpl implements ReportService {
             } else {
                 // Fallback defaults
                 periodAvailHours += (isShiftFiltered ? 8.0 : 24.0);
-                periodProductionQty += ("MILL".equalsIgnoreCase(area.getAreaCode()) ? 4000.0 : 600.0);
+                if ("MILL".equalsIgnoreCase(area.getAreaCode())) {
+                    periodProductionQty += 4000.0;
+                } else if ("NORM".equalsIgnoreCase(area.getAreaCode())) {
+                    periodProductionQty += 600.0;
+                } else if ("SMS_2".equalsIgnoreCase(area.getAreaCode())) {
+                    periodProductionQty += 3000.0;
+                } else if ("SMS_3".equalsIgnoreCase(area.getAreaCode())) {
+                    periodProductionQty += 3500.0;
+                } else {
+                    periodProductionQty += 1000.0;
+                }
             }
         }
 
-        Map<String, Double> periodDelaysByGroup = calculateDelaysByGroup(areaDelays, delayTypeMap);
-        double periodTotalDelay = periodDelaysByGroup.values().stream().mapToDouble(Double::doubleValue).sum();
+        DelayCalculationResult periodCalc = calculateDelaysGeneric(areaDelays, delayTypeMap.values());
+        double periodTotalDelay = periodCalc.planned + periodCalc.controllable + periodCalc.nonControllable;
         double periodHotHours = Math.max(0.0, periodAvailHours - periodTotalDelay);
 
-        ReportResponse.Metrics periodMetrics = compileMetrics(periodAvailHours, periodProductionQty, 0.0, periodWorkingDays, periodShifts, periodDelaysByGroup, calendarDays, periodHotHours);
+        ReportResponse.Metrics periodMetrics = compileMetrics(periodAvailHours, periodProductionQty, 0.0, periodWorkingDays, periodShifts, periodCalc, delayTypeMap.values(), calendarDays, periodHotHours);
 
         return ReportResponse.AreaReport.builder()
                 .areaId(area.getAreaId())
@@ -229,38 +276,6 @@ public class ReportServiceImpl implements ReportService {
                 .build();
     }
 
-    private Map<String, Double> calculateDelaysByGroup(List<DelayLog> logs, Map<Long, DelayType> delayTypeMap) {
-        Map<String, Double> delaySum = new HashMap<>();
-        String[] groups = {"Planned", "Electrical", "Mechanical", "Operation", "SBS", "Fuel/EMD", "Power", "MSDS", "Others"};
-        for (String g : groups) {
-            delaySum.put(g, 0.0);
-        }
-
-        for (DelayLog log : logs) {
-            DelayType type = delayTypeMap.get(log.getDelayTypeId());
-            if (type != null) {
-                double duration = log.getDelayHours() + (log.getDelayMinutes() / 60.0);
-                String code = type.getTypeCode().toUpperCase();
-                String key;
-                switch (code) {
-                    case "PLANNED": key = "Planned"; break;
-                    case "ELEC": key = "Electrical"; break;
-                    case "MECH": key = "Mechanical"; break;
-                    case "OPER": key = "Operation"; break;
-                    case "SBS": key = "SBS"; break;
-                    case "FUEL": key = "Fuel/EMD"; break;
-                    case "POWER": key = "Power"; break;
-                    case "MSDS": key = "MSDS"; break;
-                    case "OTHERS":
-                    default:
-                        key = "Others"; break;
-                }
-                delaySum.put(key, delaySum.getOrDefault(key, 0.0) + duration);
-            }
-        }
-        return delaySum;
-    }
-
     private double calculateAvailability(double availableHours, double targetCalendarHours) {
         if (targetCalendarHours <= 0) return 0.0;
         return (availableHours / targetCalendarHours) * 100.0;
@@ -268,19 +283,11 @@ public class ReportServiceImpl implements ReportService {
 
     private ReportResponse.Metrics compileMetrics(double availHours, double productionQty, double repairHours,
                                                   double workingDays, double shifts,
-                                                  Map<String, Double> delays, int calendarDays, double totalPeriodHotHours) {
-        double planned = delays.getOrDefault("Planned", 0.0);
-        double electrical = delays.getOrDefault("Electrical", 0.0);
-        double mechanical = delays.getOrDefault("Mechanical", 0.0);
-        double operation = delays.getOrDefault("Operation", 0.0);
-        double sbs = delays.getOrDefault("SBS", 0.0);
-        double fuelEmd = delays.getOrDefault("Fuel/EMD", 0.0);
-        double power = delays.getOrDefault("Power", 0.0);
-        double msds = delays.getOrDefault("MSDS", 0.0);
-        double others = delays.getOrDefault("Others", 0.0);
-
-        double controllable = electrical + mechanical + operation;
-        double nonControllable = sbs + fuelEmd + power + msds + others;
+                                                  DelayCalculationResult calc, Collection<DelayType> allTypes,
+                                                  int calendarDays, double totalPeriodHotHours) {
+        double planned = calc.planned;
+        double controllable = calc.controllable;
+        double nonControllable = calc.nonControllable;
         double totalDelay = planned + controllable + nonControllable;
         double hotHours = Math.max(0.0, availHours - totalDelay);
 
@@ -296,16 +303,16 @@ public class ReportServiceImpl implements ReportService {
             avgHotHoursStr = formatHoursToHHMM(avgHotHours);
         }
 
+        Map<String, String> delayTypeDurations = new HashMap<>();
+        for (DelayType dt : allTypes) {
+            delayTypeDurations.put(dt.getTypeCode().toUpperCase(), "00:00");
+        }
+        for (Map.Entry<String, Double> entry : calc.typeSums.entrySet()) {
+            delayTypeDurations.put(entry.getKey(), formatHoursToHHMM(entry.getValue()));
+        }
+
         return ReportResponse.Metrics.builder()
-                .planned(formatHoursToHHMM(planned))
-                .electrical(formatHoursToHHMM(electrical))
-                .mechanical(formatHoursToHHMM(mechanical))
-                .operation(formatHoursToHHMM(operation))
-                .sbs(formatHoursToHHMM(sbs))
-                .fuelEmd(formatHoursToHHMM(fuelEmd))
-                .power(formatHoursToHHMM(power))
-                .msds(formatHoursToHHMM(msds))
-                .others(formatHoursToHHMM(others))
+                .delayTypeDurations(delayTypeDurations)
                 .totalDelay(formatHoursToHHMM(totalDelay))
                 .controllable(formatHoursToHHMM(controllable))
                 .nonControllable(formatHoursToHHMM(nonControllable))
@@ -431,7 +438,81 @@ public class ReportServiceImpl implements ReportService {
     @Override
     public byte[] generateExcelReport(Long shopId, Long areaId, String reportType, LocalDate date, String month, Integer year, LocalDate fromDate, LocalDate toDate, Long delayTypeId, String shift) throws IOException {
         ReportResponse report = generateReport(shopId, areaId, reportType, date, month, year, fromDate, toDate, delayTypeId, shift);
+        
+        if (shopId == 2) {
+            ReportResponse.AreaReport sms2 = report.getAreaReports() != null ? report.getAreaReports().get("SMS_2") : null;
+            ReportResponse.AreaReport sms3 = report.getAreaReports() != null ? report.getAreaReports().get("SMS_3") : null;
+            
+            String[][] rows = {
+                {"Planned", getDelayDuration(sms2, "day", "PLANNED"), getDelayDuration(sms2, "mtd", "PLANNED"), getDelayDuration(sms3, "day", "PLANNED"), getDelayDuration(sms3, "mtd", "PLANNED")},
+                {"Electrical", getDelayDuration(sms2, "day", "ELEC"), getDelayDuration(sms2, "mtd", "ELEC"), getDelayDuration(sms3, "day", "ELEC"), getDelayDuration(sms3, "mtd", "ELEC")},
+                {"Mechanical", getDelayDuration(sms2, "day", "MECH"), getDelayDuration(sms2, "mtd", "MECH"), getDelayDuration(sms3, "day", "MECH"), getDelayDuration(sms3, "mtd", "MECH")},
+                {"Operation", getDelayDuration(sms2, "day", "OPER"), getDelayDuration(sms2, "mtd", "OPER"), getDelayDuration(sms3, "day", "OPER"), getDelayDuration(sms3, "mtd", "OPER")},
+                {"SBS", getDelayDuration(sms2, "day", "SBS"), getDelayDuration(sms2, "mtd", "SBS"), getDelayDuration(sms3, "day", "SBS"), getDelayDuration(sms3, "mtd", "SBS")},
+                {"Fuel/EMD", getDelayDuration(sms2, "day", "FUEL"), getDelayDuration(sms2, "mtd", "FUEL"), getDelayDuration(sms3, "day", "FUEL"), getDelayDuration(sms3, "mtd", "FUEL")},
+                {"Power", getDelayDuration(sms2, "day", "POWER"), getDelayDuration(sms2, "mtd", "POWER"), getDelayDuration(sms3, "day", "POWER"), getDelayDuration(sms3, "mtd", "POWER")},
+                {"MSDS", getDelayDuration(sms2, "day", "MSDS"), getDelayDuration(sms2, "mtd", "MSDS"), getDelayDuration(sms3, "day", "MSDS"), getDelayDuration(sms3, "mtd", "MSDS")},
+                {"Gas/Power Shortage", getDelayDuration(sms2, "day", "GAS_POWER_SHORTAGE"), getDelayDuration(sms2, "mtd", "GAS_POWER_SHORTAGE"), getDelayDuration(sms3, "day", "GAS_POWER_SHORTAGE"), getDelayDuration(sms3, "mtd", "GAS_POWER_SHORTAGE")},
+                {"RM Shortage", getDelayDuration(sms2, "day", "RM_SHORTAGE"), getDelayDuration(sms2, "mtd", "RM_SHORTAGE"), getDelayDuration(sms3, "day", "RM_SHORTAGE"), getDelayDuration(sms3, "mtd", "RM_SHORTAGE")},
+                {"Others", getDelayDuration(sms2, "day", "OTHERS"), getDelayDuration(sms2, "mtd", "OTHERS"), getDelayDuration(sms3, "day", "OTHERS"), getDelayDuration(sms3, "mtd", "OTHERS")},
+                {"Total Delay", sms2 != null ? sms2.getDay().getTotalDelay() : "", sms2 != null ? sms2.getMtd().getTotalDelay() : "", sms3 != null ? sms3.getDay().getTotalDelay() : "", sms3 != null ? sms3.getMtd().getTotalDelay() : ""},
+                {"Controllable", sms2 != null ? sms2.getDay().getControllable() : "", sms2 != null ? sms2.getMtd().getControllable() : "", sms3 != null ? sms3.getDay().getControllable() : "", sms3 != null ? sms3.getMtd().getControllable() : ""},
+                {"Non-Controllable", sms2 != null ? sms2.getDay().getNonControllable() : "", sms2 != null ? sms2.getMtd().getNonControllable() : "", sms3 != null ? sms3.getDay().getNonControllable() : "", sms3 != null ? sms3.getMtd().getNonControllable() : ""},
+                {"Available Hours", sms2 != null ? sms2.getDay().getAvailableHours() : "", sms2 != null ? sms2.getMtd().getAvailableHours() : "", sms3 != null ? sms3.getDay().getAvailableHours() : "", sms3 != null ? sms3.getMtd().getAvailableHours() : ""},
+                {"Hot Hours", sms2 != null ? sms2.getDay().getHotHours() : "", sms2 != null ? sms2.getMtd().getHotHours() : "", sms3 != null ? sms3.getDay().getHotHours() : "", sms3 != null ? sms3.getMtd().getHotHours() : ""},
+                {"Production/HR (T/H)", sms2 != null ? String.valueOf(sms2.getDay().getProductionPerHour()) : "", sms2 != null ? String.valueOf(sms2.getMtd().getProductionPerHour()) : "", sms3 != null ? String.valueOf(sms3.getDay().getProductionPerHour()) : "", sms3 != null ? String.valueOf(sms3.getMtd().getProductionPerHour()) : ""},
+                {"Utilization %", sms2 != null ? String.format("%.2f%%", sms2.getDay().getUtilizationPct()) : "", sms2 != null ? String.format("%.2f%%", sms2.getMtd().getUtilizationPct()) : "", sms3 != null ? String.format("%.2f%%", sms3.getDay().getUtilizationPct()) : "", sms3 != null ? String.format("%.2f%%", sms3.getMtd().getUtilizationPct()) : ""},
+                {"Availability %", sms2 != null ? String.format("%.2f%%", sms2.getDay().getAvailabilityPct()) : "", sms2 != null ? String.format("%.2f%%", sms2.getMtd().getAvailabilityPct()) : "", sms3 != null ? String.format("%.2f%%", sms3.getDay().getAvailabilityPct()) : "", sms3 != null ? String.format("%.2f%%", sms3.getMtd().getAvailabilityPct()) : ""},
+                {"Avg Hot Hours (H/Day)", "—", sms2 != null ? sms2.getMtd().getAvgHotHours() : "", "—", sms3 != null ? sms3.getMtd().getAvgHotHours() : ""},
+                {"Working Days", sms2 != null ? String.valueOf(sms2.getDay().getWorkingDays()) : "", sms2 != null ? String.valueOf(sms2.getMtd().getWorkingDays()) : "", sms3 != null ? String.valueOf(sms3.getDay().getWorkingDays()) : "", sms3 != null ? String.valueOf(sms3.getMtd().getWorkingDays()) : ""},
+                {"No Of Work Shift", sms2 != null ? String.valueOf(sms2.getDay().getShifts()) : "", sms2 != null ? String.valueOf(sms2.getMtd().getShifts()) : "", sms3 != null ? String.valueOf(sms3.getDay().getShifts()) : "", sms3 != null ? String.valueOf(sms3.getMtd().getShifts()) : ""},
+            };
+            Set<Integer> totals = new HashSet<>(Arrays.asList(11, 12, 13));
+            return generateGenericExcel(report, "Steel Melting Shop Production Division - Daily Production Report (DPR)", "SMS_2", "SMS-2", "SMS_3", "SMS-3", rows, totals, reportType, date, month, year, fromDate, toDate);
+        } else {
+            ReportResponse.AreaReport mill = report.getAreaReports() != null ? report.getAreaReports().get("MILL") : null;
+            ReportResponse.AreaReport norm = report.getAreaReports() != null ? report.getAreaReports().get("NORM") : null;
+            
+            String[][] rows = {
+                {"Planned", getDelayDuration(mill, "day", "PLANNED"), getDelayDuration(mill, "mtd", "PLANNED"), getDelayDuration(norm, "day", "PLANNED"), getDelayDuration(norm, "mtd", "PLANNED")},
+                {"Electrical", getDelayDuration(mill, "day", "ELEC"), getDelayDuration(mill, "mtd", "ELEC"), getDelayDuration(norm, "day", "ELEC"), getDelayDuration(norm, "mtd", "ELEC")},
+                {"Mechanical", getDelayDuration(mill, "day", "MECH"), getDelayDuration(mill, "mtd", "MECH"), getDelayDuration(norm, "day", "MECH"), getDelayDuration(norm, "mtd", "MECH")},
+                {"Operation", getDelayDuration(mill, "day", "OPER"), getDelayDuration(mill, "mtd", "OPER"), getDelayDuration(norm, "day", "OPER"), getDelayDuration(norm, "mtd", "OPER")},
+                {"SBS", getDelayDuration(mill, "day", "SBS"), getDelayDuration(mill, "mtd", "SBS"), getDelayDuration(norm, "day", "SBS"), getDelayDuration(norm, "mtd", "SBS")},
+                {"Fuel/EMD", getDelayDuration(mill, "day", "FUEL"), getDelayDuration(mill, "mtd", "FUEL"), getDelayDuration(norm, "day", "FUEL"), getDelayDuration(norm, "mtd", "FUEL")},
+                {"Power", getDelayDuration(mill, "day", "POWER"), getDelayDuration(mill, "mtd", "POWER"), getDelayDuration(norm, "day", "POWER"), getDelayDuration(norm, "mtd", "POWER")},
+                {"MSDS", getDelayDuration(mill, "day", "MSDS"), getDelayDuration(mill, "mtd", "MSDS"), getDelayDuration(norm, "day", "MSDS"), getDelayDuration(norm, "mtd", "MSDS")},
+                {"Others", getDelayDuration(mill, "day", "OTHERS"), getDelayDuration(mill, "mtd", "OTHERS"), getDelayDuration(norm, "day", "OTHERS"), getDelayDuration(norm, "mtd", "OTHERS")},
+                {"Total Delay", mill != null ? mill.getDay().getTotalDelay() : "", mill != null ? mill.getMtd().getTotalDelay() : "", norm != null ? norm.getDay().getTotalDelay() : "", norm != null ? norm.getMtd().getTotalDelay() : ""},
+                {"Controllable", mill != null ? mill.getDay().getControllable() : "", mill != null ? mill.getMtd().getControllable() : "", norm != null ? norm.getDay().getControllable() : "", norm != null ? norm.getMtd().getControllable() : ""},
+                {"Non-Controllable", mill != null ? mill.getDay().getNonControllable() : "", mill != null ? mill.getMtd().getNonControllable() : "", norm != null ? norm.getDay().getNonControllable() : "", norm != null ? norm.getMtd().getNonControllable() : ""},
+                {"Available Hours", mill != null ? mill.getDay().getAvailableHours() : "", mill != null ? mill.getMtd().getAvailableHours() : "", norm != null ? norm.getDay().getAvailableHours() : "", norm != null ? norm.getMtd().getAvailableHours() : ""},
+                {"Hot Hours", mill != null ? mill.getDay().getHotHours() : "", mill != null ? mill.getMtd().getHotHours() : "", norm != null ? norm.getDay().getHotHours() : "", norm != null ? norm.getMtd().getHotHours() : ""},
+                {"Production/HR (T/H)", mill != null ? String.valueOf(mill.getDay().getProductionPerHour()) : "", mill != null ? String.valueOf(mill.getMtd().getProductionPerHour()) : "", norm != null ? String.valueOf(norm.getDay().getProductionPerHour()) : "", norm != null ? String.valueOf(norm.getMtd().getProductionPerHour()) : ""},
+                {"Utilization %", mill != null ? String.format("%.2f%%", mill.getDay().getUtilizationPct()) : "", mill != null ? String.format("%.2f%%", mill.getMtd().getUtilizationPct()) : "", norm != null ? String.format("%.2f%%", norm.getDay().getUtilizationPct()) : "", norm != null ? String.format("%.2f%%", norm.getMtd().getUtilizationPct()) : ""},
+                {"Availability %", mill != null ? String.format("%.2f%%", mill.getDay().getAvailabilityPct()) : "", mill != null ? String.format("%.2f%%", mill.getMtd().getAvailabilityPct()) : "", norm != null ? String.format("%.2f%%", norm.getDay().getAvailabilityPct()) : "", norm != null ? String.format("%.2f%%", norm.getMtd().getAvailabilityPct()) : ""},
+                {"Avg Hot Hours (H/Day)", "—", mill != null ? mill.getMtd().getAvgHotHours() : "", "—", norm != null ? norm.getMtd().getAvgHotHours() : ""},
+                {"Working Days", mill != null ? String.valueOf(mill.getDay().getWorkingDays()) : "", mill != null ? String.valueOf(mill.getMtd().getWorkingDays()) : "", norm != null ? String.valueOf(norm.getDay().getWorkingDays()) : "", norm != null ? String.valueOf(norm.getMtd().getWorkingDays()) : ""},
+                {"No Of Work Shift", mill != null ? String.valueOf(mill.getDay().getShifts()) : "", mill != null ? String.valueOf(mill.getMtd().getShifts()) : "", norm != null ? String.valueOf(norm.getDay().getShifts()) : "", norm != null ? String.valueOf(norm.getMtd().getShifts()) : ""},
+            };
+            Set<Integer> totals = new HashSet<>(Arrays.asList(9, 10, 11));
+            return generateGenericExcel(report, "Plate Mill Production Division - Daily Production Report (DPR)", "MILL", "Mill Section", "NORM", "Normalizing Furnace", rows, totals, reportType, date, month, year, fromDate, toDate);
+        }
+    }
 
+    private String getDelayDuration(ReportResponse.AreaReport area, String dayOrMtd, String typeCode) {
+        if (area == null) return "";
+        ReportResponse.Metrics m = "day".equalsIgnoreCase(dayOrMtd) ? area.getDay() : area.getMtd();
+        if (m == null || m.getDelayTypeDurations() == null) return "00:00";
+        return m.getDelayTypeDurations().getOrDefault(typeCode.toUpperCase(), "00:00");
+    }
+
+    private byte[] generateGenericExcel(ReportResponse report, String titleText,
+                                         String area1Code, String area1Name,
+                                         String area2Code, String area2Name,
+                                         String[][] rows, Set<Integer> totalRowIndices,
+                                         String reportType, LocalDate date, String month, Integer year,
+                                         LocalDate fromDate, LocalDate toDate) throws IOException {
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
             Sheet sheet = workbook.createSheet("DPR Report");
 
@@ -491,7 +572,7 @@ public class ReportServiceImpl implements ReportService {
             // ---- Title Row ----
             Row titleRow = sheet.createRow(0);
             Cell titleCell = titleRow.createCell(0);
-            titleCell.setCellValue("Plate Mill Production Division - Daily Production Report (DPR)");
+            titleCell.setCellValue(titleText);
             titleCell.setCellStyle(titleStyle);
             sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, showDay ? 4 : 2));
 
@@ -527,118 +608,52 @@ public class ReportServiceImpl implements ReportService {
             paramHeader.setCellValue("Delay Type / Parameter");
             paramHeader.setCellStyle(headerStyle);
 
-            Cell millHeader = colHeaderRow1.createCell(1);
-            millHeader.setCellValue("Mill Section");
-            millHeader.setCellStyle(headerStyle);
+            Cell area1Header = colHeaderRow1.createCell(1);
+            area1Header.setCellValue(area1Name);
+            area1Header.setCellStyle(headerStyle);
             if (showDay) sheet.addMergedRegion(new CellRangeAddress(3, 3, 1, 2));
 
-            Cell normHeader = colHeaderRow1.createCell(showDay ? 3 : 2);
-            normHeader.setCellValue("Normalizing Furnace");
-            normHeader.setCellStyle(headerStyle);
-            if (showDay) sheet.addMergedRegion(new CellRangeAddress(3, 3, 3, 4));
+            Cell area2Header = colHeaderRow1.createCell(showDay ? 3 : 2);
+            area2Header.setCellValue(area2Name);
+            area2Header.setCellStyle(headerStyle);
+            if (showDay) sheet.addMergedRegion(new CellRangeAddress(3, 3, showDay ? 3 : 2, showDay ? 4 : 3));
 
             Row colHeaderRow2 = sheet.createRow(4);
             colHeaderRow2.createCell(0).setCellStyle(subHeaderStyle);
             if (showDay) {
-                Cell millDay = colHeaderRow2.createCell(1);
-                millDay.setCellValue("Mill Day (HH:MM)");
-                millDay.setCellStyle(subHeaderStyle);
-                Cell millMonth = colHeaderRow2.createCell(2);
-                millMonth.setCellValue("Mill Cumulative (" + monthLabel + " HH:MM)");
-                millMonth.setCellStyle(subHeaderStyle);
-                Cell normDay = colHeaderRow2.createCell(3);
-                normDay.setCellValue("Norm Day (HH:MM)");
-                normDay.setCellStyle(subHeaderStyle);
-                Cell normMonth = colHeaderRow2.createCell(4);
-                normMonth.setCellValue("Norm Cumulative (" + monthLabel + " HH:MM)");
-                normMonth.setCellStyle(subHeaderStyle);
+                Cell a1Day = colHeaderRow2.createCell(1);
+                a1Day.setCellValue(area1Name + " Day (HH:MM)");
+                a1Day.setCellStyle(subHeaderStyle);
+                Cell a1Month = colHeaderRow2.createCell(2);
+                a1Month.setCellValue(area1Name + " Cumulative (" + monthLabel + " HH:MM)");
+                a1Month.setCellStyle(subHeaderStyle);
+                Cell a2Day = colHeaderRow2.createCell(3);
+                a2Day.setCellValue(area2Name + " Day (HH:MM)");
+                a2Day.setCellStyle(subHeaderStyle);
+                Cell a2Month = colHeaderRow2.createCell(4);
+                a2Month.setCellValue(area2Name + " Cumulative (" + monthLabel + " HH:MM)");
+                a2Month.setCellStyle(subHeaderStyle);
             } else {
-                Cell millMonth = colHeaderRow2.createCell(1);
-                millMonth.setCellValue("Mill Cumulative (" + monthLabel + " HH:MM)");
-                millMonth.setCellStyle(subHeaderStyle);
-                Cell normMonth = colHeaderRow2.createCell(2);
-                normMonth.setCellValue("Norm Cumulative (" + monthLabel + " HH:MM)");
-                normMonth.setCellStyle(subHeaderStyle);
+                Cell a1Month = colHeaderRow2.createCell(1);
+                a1Month.setCellValue(area1Name + " Cumulative (" + monthLabel + " HH:MM)");
+                a1Month.setCellStyle(subHeaderStyle);
+                Cell a2Month = colHeaderRow2.createCell(2);
+                a2Month.setCellValue(area2Name + " Cumulative (" + monthLabel + " HH:MM)");
+                a2Month.setCellStyle(subHeaderStyle);
             }
-
-            // ---- Data Rows ----
-            ReportResponse.AreaReport millArea = report.getAreaReports() != null ? report.getAreaReports().get("MILL") : null;
-            ReportResponse.AreaReport normArea = report.getAreaReports() != null ? report.getAreaReports().get("NORM") : null;
-
-            String[][] rows = {
-                    {"Planned", millArea != null ? millArea.getDay().getPlanned() : "", millArea != null ? millArea.getMtd().getPlanned() : "",
-                            normArea != null ? normArea.getDay().getPlanned() : "", normArea != null ? normArea.getMtd().getPlanned() : ""},
-                    {"Electrical", millArea != null ? millArea.getDay().getElectrical() : "", millArea != null ? millArea.getMtd().getElectrical() : "",
-                            normArea != null ? normArea.getDay().getElectrical() : "", normArea != null ? normArea.getMtd().getElectrical() : ""},
-                    {"Mechanical", millArea != null ? millArea.getDay().getMechanical() : "", millArea != null ? millArea.getMtd().getMechanical() : "",
-                            normArea != null ? normArea.getDay().getMechanical() : "", normArea != null ? normArea.getMtd().getMechanical() : ""},
-                    {"Operation", millArea != null ? millArea.getDay().getOperation() : "", millArea != null ? millArea.getMtd().getOperation() : "",
-                            normArea != null ? normArea.getDay().getOperation() : "", normArea != null ? normArea.getMtd().getOperation() : ""},
-                    {"SBS", millArea != null ? millArea.getDay().getSbs() : "", millArea != null ? millArea.getMtd().getSbs() : "",
-                            normArea != null ? normArea.getDay().getSbs() : "", normArea != null ? normArea.getMtd().getSbs() : ""},
-                    {"Fuel/EMD", millArea != null ? millArea.getDay().getFuelEmd() : "", millArea != null ? millArea.getMtd().getFuelEmd() : "",
-                            normArea != null ? normArea.getDay().getFuelEmd() : "", normArea != null ? normArea.getMtd().getFuelEmd() : ""},
-                    {"Power", millArea != null ? millArea.getDay().getPower() : "", millArea != null ? millArea.getMtd().getPower() : "",
-                            normArea != null ? normArea.getDay().getPower() : "", normArea != null ? normArea.getMtd().getPower() : ""},
-                    {"MSDS", millArea != null ? millArea.getDay().getMsds() : "", millArea != null ? millArea.getMtd().getMsds() : "",
-                            normArea != null ? normArea.getDay().getMsds() : "", normArea != null ? normArea.getMtd().getMsds() : ""},
-                    {"Others", millArea != null ? millArea.getDay().getOthers() : "", millArea != null ? millArea.getMtd().getOthers() : "",
-                            normArea != null ? normArea.getDay().getOthers() : "", normArea != null ? normArea.getMtd().getOthers() : ""},
-                    {"Total Delay", millArea != null ? millArea.getDay().getTotalDelay() : "", millArea != null ? millArea.getMtd().getTotalDelay() : "",
-                            normArea != null ? normArea.getDay().getTotalDelay() : "", normArea != null ? normArea.getMtd().getTotalDelay() : ""},
-                    {"Controllable", millArea != null ? millArea.getDay().getControllable() : "", millArea != null ? millArea.getMtd().getControllable() : "",
-                            normArea != null ? normArea.getDay().getControllable() : "", normArea != null ? normArea.getMtd().getControllable() : ""},
-                    {"Non-Controllable", millArea != null ? millArea.getDay().getNonControllable() : "", millArea != null ? millArea.getMtd().getNonControllable() : "",
-                            normArea != null ? normArea.getDay().getNonControllable() : "", normArea != null ? normArea.getMtd().getNonControllable() : ""},
-                    {"Available Hours", millArea != null ? millArea.getDay().getAvailableHours() : "", millArea != null ? millArea.getMtd().getAvailableHours() : "",
-                            normArea != null ? normArea.getDay().getAvailableHours() : "", normArea != null ? normArea.getMtd().getAvailableHours() : ""},
-                    {"Hot Hours", millArea != null ? millArea.getDay().getHotHours() : "", millArea != null ? millArea.getMtd().getHotHours() : "",
-                            normArea != null ? normArea.getDay().getHotHours() : "", normArea != null ? normArea.getMtd().getHotHours() : ""},
-                    {"Production/HR (T/H)",
-                            millArea != null ? String.valueOf(millArea.getDay().getProductionPerHour()) : "",
-                            millArea != null ? String.valueOf(millArea.getMtd().getProductionPerHour()) : "",
-                            normArea != null ? String.valueOf(normArea.getDay().getProductionPerHour()) : "",
-                            normArea != null ? String.valueOf(normArea.getMtd().getProductionPerHour()) : ""},
-                    {"Utilization %",
-                            millArea != null ? String.format("%.2f%%", millArea.getDay().getUtilizationPct()) : "",
-                            millArea != null ? String.format("%.2f%%", millArea.getMtd().getUtilizationPct()) : "",
-                            normArea != null ? String.format("%.2f%%", normArea.getDay().getUtilizationPct()) : "",
-                            normArea != null ? String.format("%.2f%%", normArea.getMtd().getUtilizationPct()) : ""},
-                    {"Availability %",
-                            millArea != null ? String.format("%.2f%%", millArea.getDay().getAvailabilityPct()) : "",
-                            millArea != null ? String.format("%.2f%%", millArea.getMtd().getAvailabilityPct()) : "",
-                            normArea != null ? String.format("%.2f%%", normArea.getDay().getAvailabilityPct()) : "",
-                            normArea != null ? String.format("%.2f%%", normArea.getMtd().getAvailabilityPct()) : ""},
-                    {"Avg Hot Hours (H/Day)", "—",
-                            millArea != null ? millArea.getMtd().getAvgHotHours() : "",
-                            "—",
-                            normArea != null ? normArea.getMtd().getAvgHotHours() : ""},
-                    {"Working Days",
-                            millArea != null ? String.valueOf(millArea.getDay().getWorkingDays()) : "",
-                            millArea != null ? String.valueOf(millArea.getMtd().getWorkingDays()) : "",
-                            normArea != null ? String.valueOf(normArea.getDay().getWorkingDays()) : "",
-                            normArea != null ? String.valueOf(normArea.getMtd().getWorkingDays()) : ""},
-                    {"No Of Work Shift",
-                            millArea != null ? String.valueOf(millArea.getDay().getShifts()) : "",
-                            millArea != null ? String.valueOf(millArea.getMtd().getShifts()) : "",
-                            normArea != null ? String.valueOf(normArea.getDay().getShifts()) : "",
-                            normArea != null ? String.valueOf(normArea.getMtd().getShifts()) : ""},
-            };
-
-            Set<Integer> totalRowIndices = new HashSet<>(Arrays.asList(9, 10, 11));
 
             int rowNum = 5;
             for (int i = 0; i < rows.length; i++) {
                 Row row = sheet.createRow(rowNum++);
                 String[] rowData = rows[i];
                 CellStyle style = totalRowIndices.contains(i) ? totalStyle : dataStyle;
-                
+
                 int c = 0;
                 Cell labelCell = row.createCell(c);
                 labelCell.setCellValue(rowData[0]);
                 labelCell.setCellStyle(labelStyle);
                 c++;
-                
+
                 if (showDay) {
                     Cell c1 = row.createCell(c); c1.setCellValue(rowData[1]); c1.setCellStyle(style); c++;
                     Cell c2 = row.createCell(c); c2.setCellValue(rowData[2]); c2.setCellStyle(style); c++;
@@ -668,19 +683,20 @@ public class ReportServiceImpl implements ReportService {
         }
     }
 
-
     private String getMetricValueByKey(ReportResponse.Metrics m, String key, boolean isDay) {
         if (m == null) return "";
         switch (key) {
-            case "planned": return m.getPlanned();
-            case "electrical": return m.getElectrical();
-            case "mechanical": return m.getMechanical();
-            case "operation": return m.getOperation();
-            case "sbs": return m.getSbs();
-            case "fuelEmd": return m.getFuelEmd();
-            case "power": return m.getPower();
-            case "msds": return m.getMsds();
-            case "others": return m.getOthers();
+            case "planned": return m.getDelayTypeDurations().getOrDefault("PLANNED", "00:00");
+            case "electrical": return m.getDelayTypeDurations().getOrDefault("ELEC", "00:00");
+            case "mechanical": return m.getDelayTypeDurations().getOrDefault("MECH", "00:00");
+            case "operation": return m.getDelayTypeDurations().getOrDefault("OPER", "00:00");
+            case "sbs": return m.getDelayTypeDurations().getOrDefault("SBS", "00:00");
+            case "fuelEmd": return m.getDelayTypeDurations().getOrDefault("FUEL", "00:00");
+            case "power": return m.getDelayTypeDurations().getOrDefault("POWER", "00:00");
+            case "msds": return m.getDelayTypeDurations().getOrDefault("MSDS", "00:00");
+            case "others": return m.getDelayTypeDurations().getOrDefault("OTHERS", "00:00");
+            case "gasPowerShortage": return m.getDelayTypeDurations().getOrDefault("GAS_POWER_SHORTAGE", "00:00");
+            case "rmShortage": return m.getDelayTypeDurations().getOrDefault("RM_SHORTAGE", "00:00");
             case "totalDelay": return m.getTotalDelay();
             case "controllable": return m.getControllable();
             case "nonControllable": return m.getNonControllable();
@@ -847,9 +863,13 @@ public class ReportServiceImpl implements ReportService {
                 .sum();
         String totalDurationStr = String.format("%02d:%02d", totalDurationMinutes / 60, totalDurationMinutes % 60);
 
+        boolean isSMS = shopId == 2;
+        String[] groups = isSMS ?
+                new String[]{"Planned", "Electrical", "Mechanical", "Operation", "SBS", "Fuel/EMD", "Power", "MSDS", "Gas/Power Shortage", "RM Shortage", "Others"} :
+                new String[]{"Planned", "Electrical", "Mechanical", "Operation", "SBS", "Fuel/EMD", "Power", "MSDS", "Others"};
+
         Map<String, Integer> groupCounts = new LinkedHashMap<>();
         Map<String, Integer> groupDurations = new LinkedHashMap<>();
-        String[] groups = {"Planned", "Electrical", "Mechanical", "Operation", "SBS", "Fuel/EMD", "Power", "MSDS", "Others"};
         for (String g : groups) {
             groupCounts.put(g, 0);
             groupDurations.put(g, 0);
@@ -869,6 +889,8 @@ public class ReportServiceImpl implements ReportService {
                     case "FUEL": key = "Fuel/EMD"; break;
                     case "POWER": key = "Power"; break;
                     case "MSDS": key = "MSDS"; break;
+                    case "GAS_POWER_SHORTAGE": key = "Gas/Power Shortage"; break;
+                    case "RM_SHORTAGE": key = "RM Shortage"; break;
                     default: key = "Others"; break;
                 }
             }
@@ -877,7 +899,7 @@ public class ReportServiceImpl implements ReportService {
             int mins = log.getDelayMinutes() != null ? log.getDelayMinutes() : 0;
             int logMins = (hrs * 60) + mins;
             groupDurations.put(key, groupDurations.get(key) + logMins);
-        }
+        }     
 
         // 6. Generate Landscape PDF Document
         Document document = new Document(PageSize.A4.rotate(), 36, 36, 36, 36);

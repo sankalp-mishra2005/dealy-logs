@@ -15,6 +15,8 @@ public class DelayLogResponse {
     private Long delayTypeId;
     private String typeName;
     private String delayGroup;
+    private Long reasonId;
+    private String reasonName;
     private LocalDate logDate;
     private Integer delayHours;
     private Integer delayMinutes;

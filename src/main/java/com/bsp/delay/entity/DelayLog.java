@@ -25,6 +25,9 @@ public class DelayLog {
     @Column(name = "delay_type_id", nullable = false)
     private Long delayTypeId;
 
+    @Column(name = "reason_id")
+    private Long reasonId;
+
     @Column(name = "delay_hours", nullable = false)
     private Integer delayHours;
 

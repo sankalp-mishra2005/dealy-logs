@@ -14,6 +14,7 @@ public class ReportResponse {
     private LocalDate reportDate;
     private Long shopId;
     private String shopName;
+    private String reportType;
     private Map<String, AreaReport> areaReports;
     private ChartData charts;
 
@@ -52,15 +53,7 @@ public class ReportResponse {
     @AllArgsConstructor
     @Builder
     public static class Metrics {
-        private String planned;
-        private String electrical;
-        private String mechanical;
-        private String operation;
-        private String sbs;
-        private String fuelEmd;
-        private String power;
-        private String msds;
-        private String others;
+        private Map<String, String> delayTypeDurations; // Key: typeCode, Value: HH:MM
         private String totalDelay;
         private String controllable;
         private String nonControllable;

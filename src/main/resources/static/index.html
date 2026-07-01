@@ -66,12 +66,12 @@
                                             <input type="date" id="entry-date" required>
                                         </div>
                                         
-                                        <!-- Shop Select (Fixed to Plate Mill) -->
+                                        <!-- Shop Select -->
                                         <div class="form-group">
                                             <label>Shop</label>
                                             <div class="custom-select-wrapper" id="entry-shop-dropdown">
                                                 <div class="custom-select-trigger">
-                                                    <span class="custom-select-text">Plate Mill</span>
+                                                    <span class="custom-select-text">Select Shop...</span>
                                                     <span class="custom-select-arrow"></span>
                                                 </div>
                                                 <div class="custom-select-options-container">
@@ -79,7 +79,7 @@
                                                         <input type="text" class="custom-select-search-input" placeholder="Search Shop...">
                                                     </div>
                                                     <div class="custom-select-options" id="entry-shop-options">
-                                                        <div class="custom-select-option selected" data-value="1">Plate Mill</div>
+                                                        <!-- Loaded dynamically -->
                                                     </div>
                                                 </div>
                                             </div>
@@ -123,6 +123,25 @@
                                             </div>
                                         </div>
 
+                                        <!-- Delay Reason Select -->
+                                        <div class="form-group" id="entry-reason-group" style="display: none;">
+                                            <label>Delay Reason</label>
+                                            <div class="custom-select-wrapper" id="entry-reason-dropdown">
+                                                <div class="custom-select-trigger">
+                                                    <span class="custom-select-text">Select Reason...</span>
+                                                    <span class="custom-select-arrow"></span>
+                                                </div>
+                                                <div class="custom-select-options-container">
+                                                    <div class="custom-select-search-box">
+                                                        <input type="text" class="custom-select-search-input" placeholder="Search Reason...">
+                                                    </div>
+                                                    <div class="custom-select-options" id="entry-reason-options">
+                                                        <!-- Loaded dynamically -->
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
                                         <!-- Shift (Simple String Dropdown) -->
                                         <div class="form-group">
                                             <label for="entry-shift">Shift</label>
@@ -130,7 +149,6 @@
                                                 <option value="A Shift">A Shift</option>
                                                 <option value="B Shift">B Shift</option>
                                                 <option value="C Shift">C Shift</option>
-                                                <option value="General Shift">General Shift</option>
                                             </select>
                                         </div>
 
@@ -226,30 +244,8 @@
                                     <input type="date" id="metrics-date" onchange="loadDayMetrics()">
                                 </div>
                                 
-                                <!-- Mill Settings Box -->
-                                <div class="config-box" style="margin-bottom: 1rem;">
-                                    <h4>Mill Section Metrics</h4>
-                                    <div class="form-group" style="margin-bottom: 0.75rem;">
-                                        <label style="font-size: 0.75rem;">Available Hours</label>
-                                        <input type="number" id="metrics-mill-avail" min="0" max="24" step="0.1" value="24.0" style="height: 34px; font-size: 0.85rem;">
-                                    </div>
-                                    <div class="form-group">
-                                        <label style="font-size: 0.75rem;">Production Tonnage (T)</label>
-                                        <input type="number" id="metrics-mill-prod" min="0" value="4000" style="height: 34px; font-size: 0.85rem;">
-                                    </div>
-                                </div>
-
-                                <!-- Norm Settings Box -->
-                                <div class="config-box" style="margin-bottom: 1.25rem;">
-                                    <h4>Norm Section Metrics</h4>
-                                    <div class="form-group" style="margin-bottom: 0.75rem;">
-                                        <label style="font-size: 0.75rem;">Available Hours</label>
-                                        <input type="number" id="metrics-norm-avail" min="0" max="24" step="0.1" value="24.0" style="height: 34px; font-size: 0.85rem;">
-                                    </div>
-                                    <div class="form-group">
-                                        <label style="font-size: 0.75rem;">Production Tonnage (T)</label>
-                                        <input type="number" id="metrics-norm-prod" min="0" value="600" style="height: 34px; font-size: 0.85rem;">
-                                    </div>
+                                <div id="operational-inputs-container">
+                                    <!-- Populated dynamically based on selected shop's areas -->
                                 </div>
 
                                 <button class="btn btn-primary" onclick="saveDayMetrics()" style="width: 100%; height: 38px; font-size: 0.85rem;">
@@ -270,8 +266,8 @@
                     <!-- Shop Filter -->
                     <div class="form-group">
                         <label>Shop</label>
-                        <select id="report-shop-filter" class="form-control" style="height: 38px; border-radius: 6px;" onchange="onReportFilterChange()">
-                            <option value="1" selected>Plate Mill</option>
+                        <select id="report-shop-filter" class="form-control" style="height: 38px; border-radius: 6px;" onchange="onReportShopChange()">
+                            <!-- Loaded dynamically -->
                         </select>
                     </div>
 
@@ -339,7 +335,6 @@
                             <option value="A Shift">A Shift</option>
                             <option value="B Shift">B Shift</option>
                             <option value="C Shift">C Shift</option>
-                            <option value="General Shift">General Shift</option>
                         </select>
                     </div>
 
@@ -352,212 +347,31 @@
                 <!-- KPI Cards summary at the top of report -->
                 <div class="kpi-grid">
                     <div class="kpi-card kpi-mill">
-                        <span class="kpi-title">Mill Availability (MTD)</span>
+                        <span class="kpi-title" id="kpi-rep-title-1">Mill Availability (MTD)</span>
                         <div class="kpi-value" id="kpi-rep-mill-avail">85.4%</div>
                         <span class="kpi-subtitle" id="kpi-rep-mill-avail-lbl">Target Norm: 80.0%</span>
                     </div>
                     <div class="kpi-card kpi-mill">
-                        <span class="kpi-title">Mill Utilization (MTD)</span>
+                        <span class="kpi-title" id="kpi-rep-title-2">Mill Utilization (MTD)</span>
                         <div class="kpi-value" id="kpi-rep-mill-util">91.2%</div>
                         <span class="kpi-subtitle" id="kpi-rep-mill-util-lbl">Target Norm: 92.0%</span>
                     </div>
                     <div class="kpi-card kpi-norm">
-                        <span class="kpi-title">Norm Availability (MTD)</span>
+                        <span class="kpi-title" id="kpi-rep-title-3">Norm Availability (MTD)</span>
                         <div class="kpi-value" id="kpi-rep-norm-avail">98.5%</div>
                         <span class="kpi-subtitle" id="kpi-rep-norm-avail-lbl">Target Norm: 80.0%</span>
                     </div>
                     <div class="kpi-card kpi-norm">
-                        <span class="kpi-title">Norm Utilization (MTD)</span>
+                        <span class="kpi-title" id="kpi-rep-title-4">Norm Utilization (MTD)</span>
                         <div class="kpi-value" id="kpi-rep-norm-util">95.6%</div>
                         <span class="kpi-subtitle" id="kpi-rep-norm-util-lbl">Target Norm: 92.0%</span>
                     </div>
                 </div>
 
                 <!-- DPR Report layout card -->
-                <div class="card">
-                    <div class="card-header">
-                        <div>
-                            <h2 class="card-title">Plate Mill Production Division - Daily Production Report (DPR)</h2>
-                            <span class="card-subtitle" id="report-date-heading">Reporting Month: June 2026 • Date: 2026-06-20</span>
-                        </div>
-                        <div class="btn-group" style="display: flex; gap: 0.5rem;">
-                            <button class="btn btn-secondary" onclick="exportDPRReportExcel()">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                Export Excel (.xlsx)
-                            </button>
-                            <button class="btn btn-primary" onclick="exportDelayLogPdf()" style="background-color: var(--accent); border-color: var(--accent); display: inline-flex; align-items: center; gap: 0.25rem;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                Export Delay Logs (PDF)
-                            </button>
-                        </div>
-                    </div>
-                    <div class="card-body" style="padding: 0;">
-                        <div class="table-responsive">
-                            <table class="premium-table dpr-table" id="dpr-report-table">
-                                <thead>
-                                    <tr>
-                                        <th rowspan="2" style="vertical-align: middle; width: 280px; border-right: 1.5px solid var(--border-color);">Delay Type / Parameter</th>
-                                        <th colspan="2" class="text-center mill-col-group" style="border-right: 1.5px solid var(--border-color);" id="th-mill-section">Mill Section</th>
-                                        <th colspan="2" class="text-center norm-col-group" id="th-norm-section">Normalizing Furnace</th>
-                                    </tr>
-                                    <tr>
-                                        <th class="text-right mill-col-group" style="width: 180px;" id="th-mill-day">Mill Day (HH:MM)</th>
-                                        <th class="text-right mill-col-group" style="width: 180px; border-right: 1.5px solid var(--border-color);" id="th-mill-month">Mill Month (HH:MM)</th>
-                                        <th class="text-right norm-col-group" style="width: 180px;" id="th-norm-day">Norm Day (HH:MM)</th>
-                                        <th class="text-right norm-col-group" style="width: 180px;" id="th-norm-month">Norm Month (HH:MM)</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr data-type="Planned">
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Planned</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-planned">00:00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-planned" style="border-right: 1.5px solid var(--border-color);">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-planned">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-planned">00:00</td>
-                                    </tr>
-                                    <tr data-type="Electrical">
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Electrical</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-electrical">00:00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-electrical" style="border-right: 1.5px solid var(--border-color);">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-electrical">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-electrical">00:00</td>
-                                    </tr>
-                                    <tr data-type="Mechanical">
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Mechanical</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-mechanical">00:00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-mechanical" style="border-right: 1.5px solid var(--border-color);">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-mechanical">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-mechanical">00:00</td>
-                                    </tr>
-                                    <tr data-type="Operation">
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Operation</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-operation">00:00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-operation" style="border-right: 1.5px solid var(--border-color);">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-operation">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-operation">00:00</td>
-                                    </tr>
-                                    <tr data-type="SBS">
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">SBS</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-sbs">00:00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-sbs" style="border-right: 1.5px solid var(--border-color);">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-sbs">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-sbs">00:00</td>
-                                    </tr>
-                                    <tr data-type="Fuel/EMD">
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Fuel/EMD</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-fuelemd">00:00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-fuelemd" style="border-right: 1.5px solid var(--border-color);">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-fuelemd">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-fuelemd">00:00</td>
-                                    </tr>
-                                    <tr data-type="Power">
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Power</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-power">00:00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-power" style="border-right: 1.5px solid var(--border-color);">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-power">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-power">00:00</td>
-                                    </tr>
-                                    <tr data-type="MSDS">
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">MSDS</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-msds">00:00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-msds" style="border-right: 1.5px solid var(--border-color);">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-msds">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-msds">00:00</td>
-                                    </tr>
-                                    <tr data-type="Others" style="border-bottom: 2px solid var(--primary-light);">
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Others</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-others">00:00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-others" style="border-right: 1.5px solid var(--border-color);">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-others">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-others">00:00</td>
-                                    </tr>
-
-                                    <!-- DPR Totals Rows -->
-                                    <tr class="total-row">
-                                        <td style="border-right: 1.5px solid var(--border-color);">Total</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-total">00:00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-total" style="border-right: 1.5px solid var(--border-color);">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-total">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-total">00:00</td>
-                                    </tr>
-                                    <tr class="subtotal-row">
-                                        <td style="border-right: 1.5px solid var(--border-color);">Controllable</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-controllable">00:00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-controllable" style="border-right: 1.5px solid var(--border-color);">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-controllable">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-controllable">00:00</td>
-                                    </tr>
-                                    <tr class="subtotal-row" style="border-bottom: 2px solid var(--primary-light);">
-                                        <td style="border-right: 1.5px solid var(--border-color);">Non-Controllable</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-noncontrollable">00:00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-noncontrollable" style="border-right: 1.5px solid var(--border-color);">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-noncontrollable">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-noncontrollable">00:00</td>
-                                    </tr>
-
-                                    <!-- Operational details and performance metrics -->
-                                    <tr>
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Available Hours</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-avail">24:00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-avail" style="border-right: 1.5px solid var(--border-color);">000:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-avail">24:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-avail">000:00</td>
-                                    </tr>
-                                    <tr style="font-weight: 500;">
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Hot Hours</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-hot">00:00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-hot" style="border-right: 1.5px solid var(--border-color);">000:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-hot">00:00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-hot">000:00</td>
-                                    </tr>
-                                    <tr>
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Production/HR (T/H)</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-prodhr">0.0</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-prodhr" style="border-right: 1.5px solid var(--border-color);">0.0</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-prodhr">0.0</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-prodhr">0.0</td>
-                                    </tr>
-                                    <tr>
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Utilization %</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-util">0.0%</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-util" style="border-right: 1.5px solid var(--border-color);">0.0%</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-util">0.0%</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-util">0.0%</td>
-                                    </tr>
-                                    <tr style="border-bottom: 1.5px solid var(--border-color);">
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Availability %</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-availability">0.0%</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-availability" style="border-right: 1.5px solid var(--border-color);">0.0%</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-availability">0.0%</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-availability">0.0%</td>
-                                    </tr>
-
-                                    <tr>
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Avg Hot Hours (H/Day)</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-avghot">—</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-avghot" style="border-right: 1.5px solid var(--border-color);">0.0</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-avghot">—</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-avghot">0.0</td>
-                                    </tr>
-                                    <tr>
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Working Days</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-working">0.00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-working">0.00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-working">0.00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-working">0.00</td>
-                                    </tr>
-                                    <tr style="border-bottom: 2px solid var(--primary-light);">
-                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">No Of Work Shift</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-day-shifts">0.00</td>
-                                        <td class="text-right mill-col-group" id="dpr-mill-month-shifts" style="border-right: 1.5px solid var(--border-color);">0.00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-day-shifts">0.00</td>
-                                        <td class="text-right norm-col-group" id="dpr-norm-month-shifts">0.00</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
+                <div class="card" id="dpr-report-card">
+                     <!-- Injected dynamically by PlateMillReportRenderer or SMSReportRenderer -->
+                </div>  </div>
 
                 <!-- Professional Dashboard Charts Grid (Chart.js) -->
                 <div class="charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.5rem; margin-top: 2rem;">

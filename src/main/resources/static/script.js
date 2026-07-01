@@ -5,7 +5,7 @@ let activeShifts = [];
 let allShops = [];
 let allShopAreas = [];
 let allDelayTypes = [];
-const activeShopId = 1; // Plate Mill
+let activeShopId = 1; // Plate Mill
 
 // Loaded delay logs list for the active entry page
 let loadedDelayLogs = [];
@@ -182,6 +182,7 @@ async function fetchMetadata() {
         const shopsData = await shopsRes.json();
         if (shopsData.success) {
             allShops = shopsData.data;
+            populateShopDropdowns(allShops);
         }
 
         // 2. Fetch Shop Areas
@@ -190,6 +191,7 @@ async function fetchMetadata() {
         if (areasData.success) {
             allShopAreas = areasData.data;
             populateAreaDropdowns(allShopAreas);
+            renderOperationalInputBoxes(allShopAreas);
         }
 
         // 3. Fetch Delay Types
@@ -203,6 +205,18 @@ async function fetchMetadata() {
         console.error("Error fetching reference metadata:", e);
         alert("Failed to connect to the backend server. Please verify Spring Boot status.");
     }
+}
+
+function populateShopDropdowns(shops) {
+    const entryOptions = document.getElementById('entry-shop-options');
+    entryOptions.innerHTML = shops.map(shop => 
+        `<div class="custom-select-option" data-value="${shop.shopId}">${shop.shopName}</div>`
+    ).join('');
+
+    const reportShopSelect = document.getElementById('report-shop-filter');
+    reportShopSelect.innerHTML = shops.map(shop => 
+        `<option value="${shop.shopId}">${shop.shopName}</option>`
+    ).join('');
 }
 
 function populateAreaDropdowns(areas) {
@@ -228,8 +242,107 @@ function populateDelayTypeDropdowns(types) {
         types.map(t => `<option value="${t.delayTypeId}">${t.typeName}</option>`).join('');
 }
 
+async function onEntryShopChange(shopId) {
+    activeShopId = parseInt(shopId);
+    
+    // Fetch and reload areas for this shop
+    const areasRes = await fetch(`/api/shop-areas/${activeShopId}`);
+    const areasData = await areasRes.json();
+    if (areasData.success) {
+        allShopAreas = areasData.data;
+        populateAreaDropdowns(allShopAreas);
+        setCustomDropdownValue('entry-area-dropdown', '');
+    }
 
+    const delayTypeId = document.getElementById('entry-type-dropdown').dataset.value;
+    if (delayTypeId) {
+        onEntryTypeChange(delayTypeId);
+    } else {
+        hideReasonDropdown();
+    }
+    
+    renderOperationalInputBoxes(allShopAreas);
+    loadDayMetrics();
+}
 
+async function onEntryTypeChange(delayTypeId) {
+    if (!delayTypeId || !activeShopId) {
+        hideReasonDropdown();
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/api/delay-reasons?shopId=${activeShopId}&delayTypeId=${delayTypeId}`);
+        const data = await res.json();
+        if (data.success && data.data && data.data.length > 0) {
+            populateReasonDropdown(data.data);
+            showReasonDropdown();
+        } else {
+            hideReasonDropdown();
+        }
+    } catch (e) {
+        console.error("Error fetching delay reasons:", e);
+        hideReasonDropdown();
+    }
+}
+
+function populateReasonDropdown(reasons) {
+    const entryReasonOptions = document.getElementById('entry-reason-options');
+    entryReasonOptions.innerHTML = reasons.map(reason => 
+        `<div class="custom-select-option" data-value="${reason.reasonId}">${reason.reasonName}</div>`
+    ).join('');
+    setCustomDropdownValue('entry-reason-dropdown', '');
+}
+
+function showReasonDropdown() {
+    document.getElementById('entry-reason-group').style.display = 'block';
+}
+
+function hideReasonDropdown() {
+    document.getElementById('entry-reason-group').style.display = 'none';
+    const dropdown = document.getElementById('entry-reason-dropdown');
+    if (dropdown) dropdown.dataset.value = '';
+}
+
+async function onReportShopChange() {
+    const shopId = document.getElementById('report-shop-filter').value;
+    
+    const areasRes = await fetch(`/api/shop-areas/${shopId}`);
+    const areasData = await areasRes.json();
+    if (areasData.success) {
+        const areas = areasData.data;
+        const reportAreaSelect = document.getElementById('report-area-filter');
+        reportAreaSelect.innerHTML = '<option value="All">All Areas</option>' + 
+            areas.map(area => `<option value="${area.areaId}">${area.areaName}</option>`).join('');
+    }
+    
+    generateDPRReport();
+}
+
+function renderOperationalInputBoxes(areas) {
+    const container = document.getElementById('operational-inputs-container');
+    container.innerHTML = areas.map(area => {
+        let defaultProd = 1000;
+        if (area.areaCode === 'MILL') defaultProd = 4000;
+        else if (area.areaCode === 'NORM') defaultProd = 600;
+        else if (area.areaCode === 'SMS_2') defaultProd = 3000;
+        else if (area.areaCode === 'SMS_3') defaultProd = 3500;
+        
+        return `
+            <div class="config-box" style="margin-bottom: 1rem;" data-area-id="${area.areaId}" data-area-code="${area.areaCode}">
+                <h4>${area.areaName} Metrics</h4>
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label style="font-size: 0.75rem;">Available Hours</label>
+                    <input type="number" class="metric-avail" min="0" max="24" step="0.1" value="24.0" style="height: 34px; font-size: 0.85rem;">
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 0.75rem;">Production Tonnage (T)</label>
+                    <input type="number" class="metric-prod" min="0" value="${defaultProd}" style="height: 34px; font-size: 0.85rem;">
+                </div>
+            </div>
+        `;
+    }).join('');
+}
 
 // ---- 4. Interactive Time & Auto-Shift Calculations ----
 function onTimeChange() {
@@ -253,6 +366,7 @@ async function saveDelayEvent(event) {
     const date = document.getElementById('entry-date').value;
     const areaId = document.getElementById('entry-area-dropdown').dataset.value;
     const delayTypeId = document.getElementById('entry-type-dropdown').dataset.value;
+    const reasonId = document.getElementById('entry-reason-dropdown').dataset.value;
     const startTime = document.getElementById('entry-start-time').value;
     const endTime = document.getElementById('entry-end-time').value;
     const shift = document.getElementById('entry-shift').value;
@@ -261,6 +375,7 @@ async function saveDelayEvent(event) {
     const payload = {
         areaId: parseInt(areaId),
         delayTypeId: parseInt(delayTypeId),
+        reasonId: reasonId ? parseInt(reasonId) : null,
         logDate: date,
         startTime: startTime,
         endTime: endTime,
@@ -306,9 +421,10 @@ function clearEntryForm() {
     document.getElementById('entry-end-time').value = '';
     document.getElementById('entry-duration').value = '';
     document.getElementById('entry-remarks').value = '';
-    document.getElementById('entry-shift').value = 'A';
+    document.getElementById('entry-shift').value = 'A Shift';
     setCustomDropdownValue('entry-area-dropdown', '');
     setCustomDropdownValue('entry-type-dropdown', '');
+    hideReasonDropdown();
 }
 
 async function renderEnteredRecordsTable() {
@@ -319,15 +435,16 @@ async function renderEnteredRecordsTable() {
     if (!filterDate) return;
 
     try {
-        const millRes = await fetch(`/api/delay-log?areaId=1&date=${filterDate}`);
-        const normRes = await fetch(`/api/delay-log?areaId=2&date=${filterDate}`);
+        const fetchPromises = allShopAreas.map(area => fetch(`/api/delay-log?areaId=${area.areaId}&date=${filterDate}`));
+        const responses = await Promise.all(fetchPromises);
         
-        const millData = await millRes.json();
-        const normData = await normRes.json();
-
         let records = [];
-        if (millData.success && millData.data) records = records.concat(millData.data);
-        if (normData.success && normData.data) records = records.concat(normData.data);
+        for (const res of responses) {
+            const apiRes = await res.json();
+            if (apiRes.success && apiRes.data) {
+                records = records.concat(apiRes.data);
+            }
+        }
 
         loadedDelayLogs = records; // save references for offline edit loads
 
@@ -347,14 +464,22 @@ async function renderEnteredRecordsTable() {
 
         records.forEach(rec => {
             const tr = document.createElement('tr');
-            const areaBadge = rec.areaId === 1 ? 'badge-mill' : 'badge-norm';
+            let areaBadge = 'badge-mill';
+            if (rec.areaId === 2) areaBadge = 'badge-norm';
+            else if (rec.areaId === 3) areaBadge = 'badge-sms2';
+            else if (rec.areaId === 4) areaBadge = 'badge-sms3';
+            
             const typeClass = `badge-${rec.delayGroup.toLowerCase().replace('/', '')}`;
+            const reasonHtml = rec.reasonName ? `<br><small style="color:var(--text-secondary); font-style:italic;">Reason: ${rec.reasonName}</small>` : '';
             
             tr.innerHTML = `
                 <td><strong>${rec.logDate}</strong></td>
-                <td><span style="font-weight:600; color:var(--primary);">${rec.shift || 'A'}</span></td>
+                <td><span style="font-weight:600; color:var(--primary);">${rec.shift || 'A Shift'}</span></td>
                 <td><span class="badge ${areaBadge}">${rec.areaName}</span></td>
-                <td><span class="badge badge-delay ${typeClass}">${rec.typeName}</span></td>
+                <td>
+                    <span class="badge badge-delay ${typeClass}">${rec.typeName}</span>
+                    ${reasonHtml}
+                </td>
                 <td class="text-center" style="font-size:0.82rem; font-family:monospace;">${rec.startTime}-${rec.endTime}</td>
                 <td class="text-right"><strong>${rec.durationHHMM}</strong></td>
                 <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${rec.remarks}">${rec.remarks}</td>
@@ -371,7 +496,7 @@ async function renderEnteredRecordsTable() {
     }
 }
 
-function editDelayEvent(id) {
+async function editDelayEvent(id) {
     const record = loadedDelayLogs.find(rec => rec.logId === id);
     if (!record) {
         alert("Record data not found.");
@@ -386,11 +511,18 @@ function editDelayEvent(id) {
     setCustomDropdownValue('entry-area-dropdown', record.areaId);
     setCustomDropdownValue('entry-type-dropdown', record.delayTypeId);
     
+    if (record.reasonId) {
+        await onEntryTypeChange(record.delayTypeId);
+        setCustomDropdownValue('entry-reason-dropdown', record.reasonId);
+    } else {
+        hideReasonDropdown();
+    }
+    
     document.getElementById('entry-start-time').value = record.startTime || '00:00';
     document.getElementById('entry-end-time').value = record.endTime || '00:00';
     document.getElementById('entry-remarks').value = record.remarks;
     
-    document.getElementById('entry-shift').value = record.shift || 'A';
+    document.getElementById('entry-shift').value = record.shift || 'A Shift';
 
     // Recalculate duration display
     onTimeChange();
@@ -406,15 +538,21 @@ function viewDelayEvent(id) {
     const modal = document.getElementById('view-detail-modal');
     const modalBody = document.getElementById('modal-body-content');
     
-    const areaBadge = record.areaId === 1 ? 'badge-mill' : 'badge-norm';
+    let areaBadge = 'badge-mill';
+    if (record.areaId === 2) areaBadge = 'badge-norm';
+    else if (record.areaId === 3) areaBadge = 'badge-sms2';
+    else if (record.areaId === 4) areaBadge = 'badge-sms3';
+    
     const typeClass = `badge-${record.delayGroup.toLowerCase().replace('/', '')}`;
+    const reasonRow = record.reasonName ? `<div><strong>Delay Reason:</strong> ${record.reasonName}</div>` : '';
 
     modalBody.innerHTML = `
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.5rem;">
             <div><strong>Log Date:</strong> ${record.logDate}</div>
-            <div><strong>Shift:</strong> ${record.shift || 'A'}</div>
+            <div><strong>Shift:</strong> ${record.shift || 'A Shift'}</div>
             <div><strong>Shop Area:</strong> <span class="badge ${areaBadge}">${record.areaName}</span></div>
             <div><strong>Delay Type:</strong> <span class="badge badge-delay ${typeClass}">${record.typeName} [${record.delayGroup}]</span></div>
+            ${reasonRow}
             <div><strong>Time Interval:</strong> ${record.startTime} to ${record.endTime}</div>
             <div><strong>Logged Duration:</strong> ${record.durationHHMM} (${record.durationMinutes || 0} minutes)</div>
         </div>
@@ -513,8 +651,6 @@ async function generateDPRReport() {
         <strong>Reporting Frame:</strong> ${periodText}
     `;
 
-    updateReportColumns();
-
     try {
         const res = await fetch(url);
         const apiData = await res.json();
@@ -525,20 +661,11 @@ async function generateDPRReport() {
 
         const report = apiData.data;
 
-        // Render MILL values
-        if (report.areaReports.MILL) {
-            populateAreaDPRObject('mill', report.areaReports.MILL);
-        }
-        // Render NORM values
-        if (report.areaReports.NORM) {
-            populateAreaDPRObject('norm', report.areaReports.NORM);
-        }
-
-        // Update KPI Cards
-        if (report.areaReports.MILL && report.areaReports.NORM) {
-            const millMtd = report.areaReports.MILL.mtd;
-            const normMtd = report.areaReports.NORM.mtd;
-            updateKPICards(millMtd.availabilityPct, millMtd.utilizationPct, normMtd.availabilityPct, normMtd.utilizationPct);
+        // Render department-specific report
+        if (report.reportType === 'PLATE_MILL') {
+            renderPlateMillReport(report);
+        } else if (report.reportType === 'SMS') {
+            renderSMSReport(report);
         }
 
         // Load charts dynamically
@@ -549,121 +676,331 @@ async function generateDPRReport() {
     }
 }
 
-function populateAreaDPRObject(areaKey, areaReport) {
-    const d = areaReport.day;
-    const m = areaReport.mtd;
+function getVal(areaReport, dayOrMtd, typeCode) {
+    if (!areaReport) return '00:00';
+    const metrics = dayOrMtd === 'day' ? areaReport.day : areaReport.mtd;
+    if (!metrics || !metrics.delayTypeDurations) return '00:00';
+    return metrics.delayTypeDurations[typeCode] || '00:00';
+}
 
-    // Categories
-    const categories = ["planned", "electrical", "mechanical", "operation", "sbs", "fuelEmd", "power", "msds", "others"];
-    categories.forEach(cat => {
-        const elementIdDay = `dpr-${areaKey}-day-${cat.toLowerCase()}`;
-        const elementIdMonth = `dpr-${areaKey}-month-${cat.toLowerCase()}`;
-        if (document.getElementById(elementIdDay)) {
-            document.getElementById(elementIdDay).textContent = d[cat];
-        }
-        if (document.getElementById(elementIdMonth)) {
-            document.getElementById(elementIdMonth).textContent = m[cat];
-        }
+function getValDirect(areaReport, dayOrMtd, key) {
+    if (!areaReport) return '00:00';
+    const metrics = dayOrMtd === 'day' ? areaReport.day : areaReport.mtd;
+    if (!metrics) return '00:00';
+    return metrics[key] || '00:00';
+}
+
+function getParamVal(areaReport, dayOrMtd, key, formatFn) {
+    if (!areaReport) return '0.00';
+    const metrics = dayOrMtd === 'day' ? areaReport.day : areaReport.mtd;
+    if (!metrics) return '0.00';
+    const val = metrics[key];
+    if (val === undefined || val === null) return '0.00';
+    if (formatFn) return formatFn(val);
+    return val;
+}
+
+function getMonthLabel() {
+    const periodType = document.getElementById('report-period-type').value;
+    if (periodType === 'DAILY') return "Month (MTD)";
+    else if (periodType === 'MONTHLY') return "Month";
+    else if (periodType === 'YEARLY') return "Year";
+    else if (periodType === 'CUSTOM') return "Range";
+    return "Month";
+}
+
+function renderPlateMillReport(report) {
+    const showDay = (document.getElementById('report-period-type').value === 'DAILY');
+    const areaFilter = document.getElementById('report-area-filter').value;
+    const monthLabel = getMonthLabel();
+
+    const mill = report.areaReports.MILL || null;
+    const norm = report.areaReports.NORM || null;
+
+    const visibleCols = showDay ? 2 : 1;
+    const showMill = (areaFilter === 'All' || areaFilter === '1');
+    const showNorm = (areaFilter === 'All' || areaFilter === '2');
+
+    let tableHtml = `
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">${report.shopName} Production Division - Daily Production Report (DPR)</h2>
+                <span class="card-subtitle" id="report-date-heading-val">Reporting Frame: ${document.getElementById('report-date-heading').textContent}</span>
+            </div>
+            <div class="btn-group" style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-secondary" onclick="exportDPRReportExcel()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Export Excel (.xlsx)
+                </button>
+                <button class="btn btn-primary" onclick="exportDelayLogPdf()" style="background-color: var(--accent); border-color: var(--accent); display: inline-flex; align-items: center; gap: 0.25rem;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Export Delay Logs (PDF)
+                </button>
+            </div>
+        </div>
+        <div class="card-body" style="padding: 0;">
+            <div class="table-responsive">
+                <table class="premium-table dpr-table">
+                    <thead>
+                        <tr>
+                            <th rowspan="2" style="vertical-align: middle; width: 280px; border-right: 1.5px solid var(--border-color);">Delay Type / Parameter</th>
+                            ${showMill ? `<th colspan="${visibleCols}" class="text-center mill-col-group" style="border-right: 1.5px solid var(--border-color);">Mill Section</th>` : ''}
+                            ${showNorm ? `<th colspan="${visibleCols}" class="text-center norm-col-group">Normalizing Furnace</th>` : ''}
+                        </tr>
+                        <tr>
+                            ${showMill && showDay ? `<th class="text-right mill-col-group" style="width: 180px;">Mill Day (HH:MM)</th>` : ''}
+                            ${showMill ? `<th class="text-right mill-col-group" style="width: 180px; ${showNorm ? 'border-right: 1.5px solid var(--border-color);' : ''}">${showDay ? 'Mill' : 'Mill Section'} ${monthLabel} (HH:MM)</th>` : ''}
+                            ${showNorm && showDay ? `<th class="text-right norm-col-group" style="width: 180px;">Norm Day (HH:MM)</th>` : ''}
+                            ${showNorm ? `<th class="text-right norm-col-group" style="width: 180px;">${showDay ? 'Norm' : 'Normalizing Furnace'} ${monthLabel} (HH:MM)</th>` : ''}
+                        </tr>
+                    </thead>
+                    <tbody>
+    `;
+
+    const rowTypes = [
+        { label: "Planned", key: "PLANNED" },
+        { label: "Electrical", key: "ELEC" },
+        { label: "Mechanical", key: "MECH" },
+        { label: "Operation", key: "OPER" },
+        { label: "SBS", key: "SBS" },
+        { label: "Fuel/EMD", key: "FUEL" },
+        { label: "Power", key: "POWER" },
+        { label: "MSDS", key: "MSDS" },
+        { label: "Others", key: "OTHERS" }
+    ];
+
+    rowTypes.forEach((row, i) => {
+        const isLastType = (i === rowTypes.length - 1);
+        const borderStyle = isLastType ? 'style="border-bottom: 2px solid var(--primary-light);"' : '';
+        tableHtml += `
+            <tr ${borderStyle}>
+                <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">${row.label}</td>
+                ${showMill && showDay ? `<td class="text-right mill-col-group">${getVal(mill, 'day', row.key)}</td>` : ''}
+                ${showMill ? `<td class="text-right mill-col-group" style="${showNorm ? 'border-right: 1.5px solid var(--border-color);' : ''}">${getVal(mill, 'mtd', row.key)}</td>` : ''}
+                ${showNorm && showDay ? `<td class="text-right norm-col-group">${getVal(norm, 'day', row.key)}</td>` : ''}
+                ${showNorm ? `<td class="text-right norm-col-group">${getVal(norm, 'mtd', row.key)}</td>` : ''}
+            </tr>
+        `;
     });
 
-    // Calculations
-    document.getElementById(`dpr-${areaKey}-day-total`).textContent = d.totalDelay;
-    document.getElementById(`dpr-${areaKey}-month-total`).textContent = m.totalDelay;
+    tableHtml += `
+        <tr class="total-row">
+            <td style="border-right: 1.5px solid var(--border-color);">Total</td>
+            ${showMill && showDay ? `<td class="text-right mill-col-group">${getValDirect(mill, 'day', 'totalDelay')}</td>` : ''}
+            ${showMill ? `<td class="text-right mill-col-group" style="${showNorm ? 'border-right: 1.5px solid var(--border-color);' : ''}">${getValDirect(mill, 'mtd', 'totalDelay')}</td>` : ''}
+            ${showNorm && showDay ? `<td class="text-right norm-col-group">${getValDirect(norm, 'day', 'totalDelay')}</td>` : ''}
+            ${showNorm ? `<td class="text-right norm-col-group">${getValDirect(norm, 'mtd', 'totalDelay')}</td>` : ''}
+        </tr>
+        <tr class="subtotal-row">
+            <td style="border-right: 1.5px solid var(--border-color);">Controllable</td>
+            ${showMill && showDay ? `<td class="text-right mill-col-group">${getValDirect(mill, 'day', 'controllable')}</td>` : ''}
+            ${showMill ? `<td class="text-right mill-col-group" style="${showNorm ? 'border-right: 1.5px solid var(--border-color);' : ''}">${getValDirect(mill, 'mtd', 'controllable')}</td>` : ''}
+            ${showNorm && showDay ? `<td class="text-right norm-col-group">${getValDirect(norm, 'day', 'controllable')}</td>` : ''}
+            ${showNorm ? `<td class="text-right norm-col-group">${getValDirect(norm, 'mtd', 'controllable')}</td>` : ''}
+        </tr>
+        <tr class="subtotal-row" style="border-bottom: 2px solid var(--primary-light);">
+            <td style="border-right: 1.5px solid var(--border-color);">Non-Controllable</td>
+            ${showMill && showDay ? `<td class="text-right mill-col-group">${getValDirect(mill, 'day', 'nonControllable')}</td>` : ''}
+            ${showMill ? `<td class="text-right mill-col-group" style="${showNorm ? 'border-right: 1.5px solid var(--border-color);' : ''}">${getValDirect(mill, 'mtd', 'nonControllable')}</td>` : ''}
+            ${showNorm && showDay ? `<td class="text-right norm-col-group">${getValDirect(norm, 'day', 'nonControllable')}</td>` : ''}
+            ${showNorm ? `<td class="text-right norm-col-group">${getValDirect(norm, 'mtd', 'nonControllable')}</td>` : ''}
+        </tr>
+    `;
 
-    document.getElementById(`dpr-${areaKey}-day-controllable`).textContent = d.controllable;
-    document.getElementById(`dpr-${areaKey}-month-controllable`).textContent = m.controllable;
+    const params = [
+        { label: "Available Hours", field: "availableHours" },
+        { label: "Hot Hours", field: "hotHours" },
+        { label: "Production/HR (T/H)", field: "productionPerHour", format: (v) => v.toFixed(1) },
+        { label: "Utilization %", field: "utilizationPct", format: (v) => v.toFixed(1) + "%" },
+        { label: "Availability %", field: "availabilityPct", format: (v) => v.toFixed(1) + "%" },
+        { label: "Avg Hot Hours (H/Day)", field: "avgHotHours", isMtdOnly: true },
+        { label: "Working Days", field: "workingDays", format: (v) => v.toFixed(2) },
+        { label: "No Of Work Shift", field: "shifts", format: (v) => v.toFixed(2) }
+    ];
 
-    document.getElementById(`dpr-${areaKey}-day-noncontrollable`).textContent = d.nonControllable;
-    document.getElementById(`dpr-${areaKey}-month-noncontrollable`).textContent = m.nonControllable;
+    params.forEach(p => {
+        tableHtml += `
+            <tr>
+                <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">${p.label}</td>
+                ${showMill && showDay ? `<td class="text-right mill-col-group">${p.isMtdOnly ? '—' : getParamVal(mill, 'day', p.field, p.format)}</td>` : ''}
+                ${showMill ? `<td class="text-right mill-col-group" style="${showNorm ? 'border-right: 1.5px solid var(--border-color);' : ''}">${getParamVal(mill, 'mtd', p.field, p.format)}</td>` : ''}
+                ${showNorm && showDay ? `<td class="text-right norm-col-group">${p.isMtdOnly ? '—' : getParamVal(norm, 'day', p.field, p.format)}</td>` : ''}
+                ${showNorm ? `<td class="text-right norm-col-group">${getParamVal(norm, 'mtd', p.field, p.format)}</td>` : ''}
+            </tr>
+        `;
+    });
 
-    document.getElementById(`dpr-${areaKey}-day-avail`).textContent = d.availableHours;
-    document.getElementById(`dpr-${areaKey}-month-avail`).textContent = m.availableHours;
+    tableHtml += `
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
 
-    document.getElementById(`dpr-${areaKey}-day-hot`).textContent = d.hotHours;
-    document.getElementById(`dpr-${areaKey}-month-hot`).textContent = m.hotHours;
-
-    document.getElementById(`dpr-${areaKey}-day-prodhr`).textContent = d.productionPerHour.toFixed(1);
-    document.getElementById(`dpr-${areaKey}-month-prodhr`).textContent = m.productionPerHour.toFixed(1);
-
-    document.getElementById(`dpr-${areaKey}-day-util`).textContent = d.utilizationPct.toFixed(1) + "%";
-    document.getElementById(`dpr-${areaKey}-month-util`).textContent = m.utilizationPct.toFixed(1) + "%";
-
-    document.getElementById(`dpr-${areaKey}-day-availability`).textContent = d.availabilityPct.toFixed(1) + "%";
-    document.getElementById(`dpr-${areaKey}-month-availability`).textContent = m.availabilityPct.toFixed(1) + "%";
-
-
-
-    document.getElementById(`dpr-${areaKey}-day-working`).textContent = d.workingDays.toFixed(2);
-    document.getElementById(`dpr-${areaKey}-month-working`).textContent = m.workingDays.toFixed(2);
-
-    document.getElementById(`dpr-${areaKey}-day-shifts`).textContent = d.shifts.toFixed(2);
-    document.getElementById('dpr-' + areaKey + '-month-shifts').textContent = m.shifts.toFixed(2);
-    
-    document.getElementById(`dpr-${areaKey}-day-avghot`).textContent = "—";
-    document.getElementById(`dpr-${areaKey}-month-avghot`).textContent = m.avgHotHours || "00:00";
+    document.getElementById('dpr-report-card').innerHTML = tableHtml;
+    updateKPICards('Mill Section', mill ? mill.mtd : null, 'Normalizing Furnace', norm ? norm.mtd : null);
 }
 
-function updateReportColumns() {
+function renderSMSReport(report) {
+    const showDay = (document.getElementById('report-period-type').value === 'DAILY');
     const areaFilter = document.getElementById('report-area-filter').value;
-    const periodType = document.getElementById('report-period-type').value;
+    const monthLabel = getMonthLabel();
 
-    const millCols = document.querySelectorAll('.mill-col-group');
-    const normCols = document.querySelectorAll('.norm-col-group');
-    
-    // Reset all to visible first
-    millCols.forEach(el => el.style.display = '');
-    normCols.forEach(el => el.style.display = '');
+    const sms2 = report.areaReports.SMS_2 || null;
+    const sms3 = report.areaReports.SMS_3 || null;
 
-    // 1. Area filtering
-    if (areaFilter === '1') {
-        normCols.forEach(el => el.style.display = 'none');
-    } else if (areaFilter === '2') {
-        millCols.forEach(el => el.style.display = 'none');
-    }
+    const visibleCols = showDay ? 2 : 1;
+    const showSMS2 = (areaFilter === 'All' || areaFilter === '3');
+    const showSMS3 = (areaFilter === 'All' || areaFilter === '4');
 
-    // 2. Period filtering
-    let showDay = (periodType === 'DAILY');
-    let monthLabel = "Month";
-    if (periodType === 'DAILY') monthLabel = "Month (MTD)";
-    else if (periodType === 'MONTHLY') monthLabel = "Month";
-    else if (periodType === 'YEARLY') monthLabel = "Year";
-    else if (periodType === 'CUSTOM') monthLabel = "Range";
+    let tableHtml = `
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">${report.shopName} Production Division - Daily Production Report (DPR)</h2>
+                <span class="card-subtitle" id="report-date-heading-val">Reporting Frame: ${document.getElementById('report-date-heading').textContent}</span>
+            </div>
+            <div class="btn-group" style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-secondary" onclick="exportDPRReportExcel()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Export Excel (.xlsx)
+                </button>
+                <button class="btn btn-primary" onclick="exportDelayLogPdf()" style="background-color: var(--accent); border-color: var(--accent); display: inline-flex; align-items: center; gap: 0.25rem;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Export Delay Logs (PDF)
+                </button>
+            </div>
+        </div>
+        <div class="card-body" style="padding: 0;">
+            <div class="table-responsive">
+                <table class="premium-table dpr-table">
+                    <thead>
+                        <tr>
+                            <th rowspan="2" style="vertical-align: middle; width: 280px; border-right: 1.5px solid var(--border-color);">Delay Type / Parameter</th>
+                            ${showSMS2 ? `<th colspan="${visibleCols}" class="text-center sms-col-group" style="border-right: 1.5px solid var(--border-color);">SMS-2 Section</th>` : ''}
+                            ${showSMS3 ? `<th colspan="${visibleCols}" class="text-center sms-col-group">SMS-3 Section</th>` : ''}
+                        </tr>
+                        <tr>
+                            ${showSMS2 && showDay ? `<th class="text-right sms-col-group" style="width: 180px;">SMS-2 Day (HH:MM)</th>` : ''}
+                            ${showSMS2 ? `<th class="text-right sms-col-group" style="width: 180px; ${showSMS3 ? 'border-right: 1.5px solid var(--border-color);' : ''}">${showDay ? 'SMS-2' : 'SMS-2 Section'} ${monthLabel} (HH:MM)</th>` : ''}
+                            ${showSMS3 && showDay ? `<th class="text-right sms-col-group" style="width: 180px;">SMS-3 Day (HH:MM)</th>` : ''}
+                            ${showSMS3 ? `<th class="text-right sms-col-group" style="width: 180px;">${showDay ? 'SMS-3' : 'SMS-3 Section'} ${monthLabel} (HH:MM)</th>` : ''}
+                        </tr>
+                    </thead>
+                    <tbody>
+    `;
 
-    const monthHeaders = [document.getElementById('th-mill-month'), document.getElementById('th-norm-month')];
-    if (monthHeaders[0]) monthHeaders[0].textContent = `Mill ${monthLabel} (HH:MM)`;
-    if (monthHeaders[1]) monthHeaders[1].textContent = `Norm ${monthLabel} (HH:MM)`;
+    const rowTypes = [
+        { label: "Planned", key: "PLANNED" },
+        { label: "Electrical", key: "ELEC" },
+        { label: "Mechanical", key: "MECH" },
+        { label: "Operation", key: "OPER" },
+        { label: "SBS", key: "SBS" },
+        { label: "Fuel/EMD", key: "FUEL" },
+        { label: "Power", key: "POWER" },
+        { label: "MSDS", key: "MSDS" },
+        { label: "Gas/Power Shortage", key: "GAS_POWER_SHORTAGE" },
+        { label: "RM Shortage", key: "RM_SHORTAGE" },
+        { label: "Others", key: "OTHERS" }
+    ];
 
-    const dayCells = document.querySelectorAll('[id^="dpr-mill-day"], [id^="dpr-norm-day"], #th-mill-day, #th-norm-day');
-    if (!showDay) {
-        dayCells.forEach(el => el.style.display = 'none');
-    }
+    rowTypes.forEach((row, i) => {
+        const isLastType = (i === rowTypes.length - 1);
+        const borderStyle = isLastType ? 'style="border-bottom: 2px solid var(--primary-light);"' : '';
+        tableHtml += `
+            <tr ${borderStyle}>
+                <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">${row.label}</td>
+                ${showSMS2 && showDay ? `<td class="text-right sms-col-group">${getVal(sms2, 'day', row.key)}</td>` : ''}
+                ${showSMS2 ? `<td class="text-right sms-col-group" style="${showSMS3 ? 'border-right: 1.5px solid var(--border-color);' : ''}">${getVal(sms2, 'mtd', row.key)}</td>` : ''}
+                ${showSMS3 && showDay ? `<td class="text-right sms-col-group">${getVal(sms3, 'day', row.key)}</td>` : ''}
+                ${showSMS3 ? `<td class="text-right sms-col-group">${getVal(sms3, 'mtd', row.key)}</td>` : ''}
+            </tr>
+        `;
+    });
 
-    // 3. Update colspans for top headers
-    const visibleColsPerArea = showDay ? 2 : 1;
-    
-    const millSectionTh = document.getElementById('th-mill-section');
-    const normSectionTh = document.getElementById('th-norm-section');
-    
-    if (millSectionTh) millSectionTh.setAttribute('colspan', visibleColsPerArea.toString());
-    if (normSectionTh) normSectionTh.setAttribute('colspan', visibleColsPerArea.toString());
+    tableHtml += `
+        <tr class="total-row">
+            <td style="border-right: 1.5px solid var(--border-color);">Total</td>
+            ${showSMS2 && showDay ? `<td class="text-right sms-col-group">${getValDirect(sms2, 'day', 'totalDelay')}</td>` : ''}
+            ${showSMS2 ? `<td class="text-right sms-col-group" style="${showSMS3 ? 'border-right: 1.5px solid var(--border-color);' : ''}">${getValDirect(sms2, 'mtd', 'totalDelay')}</td>` : ''}
+            ${showSMS3 && showDay ? `<td class="text-right sms-col-group">${getValDirect(sms3, 'day', 'totalDelay')}</td>` : ''}
+            ${showSMS3 ? `<td class="text-right sms-col-group">${getValDirect(sms3, 'mtd', 'totalDelay')}</td>` : ''}
+        </tr>
+        <tr class="subtotal-row">
+            <td style="border-right: 1.5px solid var(--border-color);">Controllable</td>
+            ${showSMS2 && showDay ? `<td class="text-right sms-col-group">${getValDirect(sms2, 'day', 'controllable')}</td>` : ''}
+            ${showSMS2 ? `<td class="text-right sms-col-group" style="${showSMS3 ? 'border-right: 1.5px solid var(--border-color);' : ''}">${getValDirect(sms2, 'mtd', 'controllable')}</td>` : ''}
+            ${showSMS3 && showDay ? `<td class="text-right sms-col-group">${getValDirect(sms3, 'day', 'controllable')}</td>` : ''}
+            ${showSMS3 ? `<td class="text-right sms-col-group">${getValDirect(sms3, 'mtd', 'controllable')}</td>` : ''}
+        </tr>
+        <tr class="subtotal-row" style="border-bottom: 2px solid var(--primary-light);">
+            <td style="border-right: 1.5px solid var(--border-color);">Non-Controllable</td>
+            ${showSMS2 && showDay ? `<td class="text-right sms-col-group">${getValDirect(sms2, 'day', 'nonControllable')}</td>` : ''}
+            ${showSMS2 ? `<td class="text-right sms-col-group" style="${showSMS3 ? 'border-right: 1.5px solid var(--border-color);' : ''}">${getValDirect(sms2, 'mtd', 'nonControllable')}</td>` : ''}
+            ${showSMS3 && showDay ? `<td class="text-right sms-col-group">${getValDirect(sms3, 'day', 'nonControllable')}</td>` : ''}
+            ${showSMS3 ? `<td class="text-right sms-col-group">${getValDirect(sms3, 'mtd', 'nonControllable')}</td>` : ''}
+        </tr>
+    `;
+
+    const params = [
+        { label: "Available Hours", field: "availableHours" },
+        { label: "Hot Hours", field: "hotHours" },
+        { label: "Production/HR (T/H)", field: "productionPerHour", format: (v) => v.toFixed(1) },
+        { label: "Utilization %", field: "utilizationPct", format: (v) => v.toFixed(1) + "%" },
+        { label: "Availability %", field: "availabilityPct", format: (v) => v.toFixed(1) + "%" },
+        { label: "Avg Hot Hours (H/Day)", field: "avgHotHours", isMtdOnly: true },
+        { label: "Working Days", field: "workingDays", format: (v) => v.toFixed(2) },
+        { label: "No Of Work Shift", field: "shifts", format: (v) => v.toFixed(2) }
+    ];
+
+    params.forEach(p => {
+        tableHtml += `
+            <tr>
+                <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">${p.label}</td>
+                ${showSMS2 && showDay ? `<td class="text-right sms-col-group">${p.isMtdOnly ? '—' : getParamVal(sms2, 'day', p.field, p.format)}</td>` : ''}
+                ${showSMS2 ? `<td class="text-right sms-col-group" style="${showSMS3 ? 'border-right: 1.5px solid var(--border-color);' : ''}">${getParamVal(sms2, 'mtd', p.field, p.format)}</td>` : ''}
+                ${showSMS3 && showDay ? `<td class="text-right sms-col-group">${p.isMtdOnly ? '—' : getParamVal(sms3, 'day', p.field, p.format)}</td>` : ''}
+                ${showSMS3 ? `<td class="text-right sms-col-group">${getParamVal(sms3, 'mtd', p.field, p.format)}</td>` : ''}
+            </tr>
+        `;
+    });
+
+    tableHtml += `
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('dpr-report-card').innerHTML = tableHtml;
+    updateKPICards('SMS-2', sms2 ? sms2.mtd : null, 'SMS-3', sms3 ? sms3.mtd : null);
 }
 
-function updateKPICards(mAvail, mUtil, nAvail, nUtil) {
-    const millAvailVal = document.getElementById('kpi-rep-mill-avail');
-    millAvailVal.textContent = `${mAvail.toFixed(1)}%`;
-    toggleKPIClass(millAvailVal.closest('.kpi-card'), mAvail >= 80.0);
-    
-    const millUtilVal = document.getElementById('kpi-rep-mill-util');
-    millUtilVal.textContent = `${mUtil.toFixed(1)}%`;
-    toggleKPIClass(millUtilVal.closest('.kpi-card'), mUtil >= 92.0);
-    
-    const normAvailVal = document.getElementById('kpi-rep-norm-avail');
-    normAvailVal.textContent = `${nAvail.toFixed(1)}%`;
-    toggleKPIClass(normAvailVal.closest('.kpi-card'), nAvail >= 80.0);
-    
-    const normUtilVal = document.getElementById('kpi-rep-norm-util');
-    normUtilVal.textContent = `${nUtil.toFixed(1)}%`;
-    toggleKPIClass(normUtilVal.closest('.kpi-card'), nUtil >= 92.0);
+function updateKPICards(area1Name, area1Metrics, area2Name, area2Metrics) {
+    document.getElementById('kpi-rep-title-1').textContent = `${area1Name} Availability (MTD)`;
+    document.getElementById('kpi-rep-title-2').textContent = `${area1Name} Utilization (MTD)`;
+    document.getElementById('kpi-rep-title-3').textContent = `${area2Name} Availability (MTD)`;
+    document.getElementById('kpi-rep-title-4').textContent = `${area2Name} Utilization (MTD)`;
+
+    const a1Avail = area1Metrics ? area1Metrics.availabilityPct : 0;
+    const a1Util = area1Metrics ? area1Metrics.utilizationPct : 0;
+    const a2Avail = area2Metrics ? area2Metrics.availabilityPct : 0;
+    const a2Util = area2Metrics ? area2Metrics.utilizationPct : 0;
+
+    const val1 = document.getElementById('kpi-rep-mill-avail');
+    val1.textContent = `${a1Avail.toFixed(1)}%`;
+    toggleKPIClass(val1.closest('.kpi-card'), a1Avail >= 80.0);
+
+    const val2 = document.getElementById('kpi-rep-mill-util');
+    val2.textContent = `${a1Util.toFixed(1)}%`;
+    toggleKPIClass(val2.closest('.kpi-card'), a1Util >= 92.0);
+
+    const val3 = document.getElementById('kpi-rep-norm-avail');
+    val3.textContent = `${a2Avail.toFixed(1)}%`;
+    toggleKPIClass(val3.closest('.kpi-card'), a2Avail >= 80.0);
+
+    const val4 = document.getElementById('kpi-rep-norm-util');
+    val4.textContent = `${a2Util.toFixed(1)}%`;
+    toggleKPIClass(val4.closest('.kpi-card'), a2Util >= 92.0);
 }
 
 function toggleKPIClass(element, isTargetMet) {
@@ -849,26 +1186,29 @@ async function loadDayMetrics() {
     const dateVal = document.getElementById('metrics-date').value;
     if (!dateVal) return;
 
-    try {
-        const millRes = await fetch(`/api/operational-input?areaId=1&date=${dateVal}`);
-        const normRes = await fetch(`/api/operational-input?areaId=2&date=${dateVal}`);
-        
-        const millData = await millRes.json();
-        const normData = await normRes.json();
-
-        if (millData.success && millData.data) {
-            const mInput = millData.data;
-            document.getElementById('metrics-mill-avail').value = mInput.availableHours;
-            document.getElementById('metrics-mill-prod').value = mInput.productionTonnage;
+    const configBoxes = document.querySelectorAll('#operational-inputs-container .config-box');
+    for (const box of configBoxes) {
+        const areaId = box.dataset.areaId;
+        try {
+            const res = await fetch(`/api/operational-input?areaId=${areaId}&date=${dateVal}`);
+            const data = await res.json();
+            if (data.success && data.data) {
+                box.querySelector('.metric-avail').value = data.data.availableHours;
+                box.querySelector('.metric-prod').value = data.data.productionTonnage;
+            } else {
+                // reset to default fallbacks
+                box.querySelector('.metric-avail').value = "24.0";
+                const areaCode = box.dataset.areaCode;
+                let defaultProd = 1000;
+                if (areaCode === 'MILL') defaultProd = 4000;
+                else if (areaCode === 'NORM') defaultProd = 600;
+                else if (areaCode === 'SMS_2') defaultProd = 3000;
+                else if (areaCode === 'SMS_3') defaultProd = 3500;
+                box.querySelector('.metric-prod').value = defaultProd;
+            }
+        } catch (e) {
+            console.error("Error loading operational input:", e);
         }
-
-        if (normData.success && normData.data) {
-            const nInput = normData.data;
-            document.getElementById('metrics-norm-avail').value = nInput.availableHours;
-            document.getElementById('metrics-norm-prod').value = nInput.productionTonnage;
-        }
-    } catch (e) {
-        console.error("Error loading daily operational metrics:", e);
     }
 }
 
@@ -879,54 +1219,50 @@ async function saveDayMetrics() {
         return;
     }
 
-    const millAvailVal = parseFloat(document.getElementById('metrics-mill-avail').value) || 0;
-    const millProd = parseFloat(document.getElementById('metrics-mill-prod').value) || 0;
-    
-    const normAvailVal = parseFloat(document.getElementById('metrics-norm-avail').value) || 0;
-    const normProd = parseFloat(document.getElementById('metrics-norm-prod').value) || 0;
+    const configBoxes = document.querySelectorAll('#operational-inputs-container .config-box');
+    let hasError = false;
+    let savedCount = 0;
 
-    if (millAvailVal < 0 || millAvailVal > 24 || normAvailVal < 0 || normAvailVal > 24) {
-        alert("Available hours must be between 0 and 24 hours.");
-        return;
+    for (const box of configBoxes) {
+        const areaId = box.dataset.areaId;
+        const avail = parseFloat(box.querySelector('.metric-avail').value) || 0;
+        const prod = parseFloat(box.querySelector('.metric-prod').value) || 0;
+
+        if (avail < 0 || avail > 24) {
+            alert("Available hours must be between 0 and 24 hours.");
+            hasError = true;
+            break;
+        }
+
+        try {
+            const res = await fetch('/api/operational-input', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    areaId: parseInt(areaId),
+                    logDate: dateVal,
+                    availableHours: avail,
+                    productionTonnage: prod
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                savedCount++;
+            }
+        } catch (e) {
+            console.error("Error saving operational inputs:", e);
+        }
     }
 
-    try {
-        const millRes = await fetch('/api/operational-input', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                areaId: 1,
-                logDate: dateVal,
-                availableHours: millAvailVal,
-                productionTonnage: millProd
-            })
-        });
-
-        const normRes = await fetch('/api/operational-input', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                areaId: 2,
-                logDate: dateVal,
-                availableHours: normAvailVal,
-                productionTonnage: normProd
-            })
-        });
-
-        const millData = await millRes.json();
-        const normData = await normRes.json();
-
-        if (millData.success && normData.success) {
+    if (!hasError) {
+        if (savedCount === configBoxes.length) {
             alert(`Operational inputs updated for ${dateVal}.`);
             if (document.getElementById('screen-report').classList.contains('active')) {
                 generateDPRReport();
             }
         } else {
-            alert("Failed to save operational inputs.");
+            alert("Some operational inputs failed to save.");
         }
-    } catch (e) {
-        console.error("Error saving operational inputs:", e);
-        alert("Error sending operational data to server.");
     }
 }
 
@@ -970,11 +1306,21 @@ async function initApp() {
     });
 
     initSearchableDropdowns();
+
+    // Bind custom dropdown wrap changes
+    document.getElementById('entry-shop-dropdown').addEventListener('change', (e) => {
+        onEntryShopChange(e.detail.value);
+    });
+    document.getElementById('entry-type-dropdown').addEventListener('change', (e) => {
+        onEntryTypeChange(e.detail.value);
+    });
+
     await loadDayMetrics();
     await renderEnteredRecordsTable();
     
     // Force default searchable dropdown states
     setCustomDropdownValue('entry-shop-dropdown', '1');
+    await onEntryShopChange('1');
 }
 
 window.addEventListener('DOMContentLoaded', () => {

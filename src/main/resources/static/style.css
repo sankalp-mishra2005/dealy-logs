@@ -530,6 +530,16 @@ textarea {
     color: hsl(270, 60%, 35%);
 }
 
+.badge-sms2 {
+    background-color: hsl(150, 50%, 90%);
+    color: hsl(150, 60%, 30%);
+}
+
+.badge-sms3 {
+    background-color: hsl(35, 75%, 90%);
+    color: hsl(35, 80%, 30%);
+}
+
 /* Delay Type Specific badges */
 .badge-delay {
     background-color: #f1f3f5;

@@ -17,6 +17,8 @@ public class DelayLogRequest {
     @NotNull(message = "Delay Type ID is required")
     private Long delayTypeId;
 
+    private Long reasonId;
+
     @NotNull(message = "Log date is required")
     private LocalDate logDate;
 

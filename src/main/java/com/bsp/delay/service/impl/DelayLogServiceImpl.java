@@ -6,8 +6,10 @@ import com.bsp.delay.entity.DelayLog;
 import com.bsp.delay.entity.DelayType;
 import com.bsp.delay.entity.ShiftOperationalLog;
 import com.bsp.delay.entity.ShopArea;
+import com.bsp.delay.entity.DelayReason;
 import com.bsp.delay.exception.ResourceNotFoundException;
 import com.bsp.delay.repository.DelayLogRepository;
+import com.bsp.delay.repository.DelayReasonRepository;
 import com.bsp.delay.repository.DelayTypeRepository;
 import com.bsp.delay.repository.ShiftOperationalLogRepository;
 import com.bsp.delay.repository.ShopAreaRepository;
@@ -26,15 +28,18 @@ public class DelayLogServiceImpl implements DelayLogService {
     private final ShopAreaRepository shopAreaRepository;
     private final DelayTypeRepository delayTypeRepository;
     private final ShiftOperationalLogRepository shiftOperationalLogRepository;
+    private final DelayReasonRepository delayReasonRepository;
 
     public DelayLogServiceImpl(DelayLogRepository delayLogRepository,
                                ShopAreaRepository shopAreaRepository,
                                DelayTypeRepository delayTypeRepository,
-                               ShiftOperationalLogRepository shiftOperationalLogRepository) {
+                               ShiftOperationalLogRepository shiftOperationalLogRepository,
+                               DelayReasonRepository delayReasonRepository) {
         this.delayLogRepository = delayLogRepository;
         this.shopAreaRepository = shopAreaRepository;
         this.delayTypeRepository = delayTypeRepository;
         this.shiftOperationalLogRepository = shiftOperationalLogRepository;
+        this.delayReasonRepository = delayReasonRepository;
     }
 
     private int calculateDuration(String startTime, String endTime) {
@@ -69,6 +74,7 @@ public class DelayLogServiceImpl implements DelayLogService {
         DelayLog log = DelayLog.builder()
                 .operationalLogId(opLog.getOperationalLogId())
                 .delayTypeId(request.getDelayTypeId())
+                .reasonId(request.getReasonId())
                 .delayHours(hours)
                 .delayMinutes(mins)
                 .startTime(request.getStartTime())
@@ -102,6 +108,7 @@ public class DelayLogServiceImpl implements DelayLogService {
 
         log.setOperationalLogId(opLog.getOperationalLogId());
         log.setDelayTypeId(request.getDelayTypeId());
+        log.setReasonId(request.getReasonId());
         log.setDelayHours(hours);
         log.setDelayMinutes(mins);
         log.setStartTime(request.getStartTime());
@@ -158,6 +165,12 @@ public class DelayLogServiceImpl implements DelayLogService {
 
     private DelayLogResponse mapToResponse(DelayLog log, String areaName, String typeName, String delayGroup, LocalDate logDate, Long areaId) {
         String formattedDuration = String.format("%02d:%02d", log.getDelayHours(), log.getDelayMinutes());
+        String reasonName = null;
+        if (log.getReasonId() != null) {
+            reasonName = delayReasonRepository.findById(log.getReasonId())
+                    .map(DelayReason::getReasonName)
+                    .orElse(null);
+        }
         return DelayLogResponse.builder()
                 .logId(log.getDelayLogId())
                 .areaId(areaId)
@@ -165,6 +178,8 @@ public class DelayLogServiceImpl implements DelayLogService {
                 .delayTypeId(log.getDelayTypeId())
                 .typeName(typeName)
                 .delayGroup(delayGroup)
+                .reasonId(log.getReasonId())
+                .reasonName(reasonName)
                 .logDate(logDate)
                 .delayHours(log.getDelayHours())
                 .delayMinutes(log.getDelayMinutes())

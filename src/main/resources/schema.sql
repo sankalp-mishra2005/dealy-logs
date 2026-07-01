@@ -32,6 +32,19 @@ CREATE TABLE DELAY_TYPE (
 
 CREATE SEQUENCE delay_type_seq START WITH 1 INCREMENT BY 1;
 
+-- 3.5 DELAY_REASON Table
+CREATE TABLE DELAY_REASON (
+    reason_id NUMBER(19,0) PRIMARY KEY,
+    shop_id NUMBER(19,0) NOT NULL,
+    delay_type_id NUMBER(19,0) NOT NULL,
+    reason_name VARCHAR2(255) NOT NULL,
+    sort_order NUMBER(10,0) DEFAULT 0,
+    CONSTRAINT fk_reason_shop FOREIGN KEY (shop_id) REFERENCES SHOP(shop_id),
+    CONSTRAINT fk_reason_type FOREIGN KEY (delay_type_id) REFERENCES DELAY_TYPE(delay_type_id)
+);
+
+CREATE SEQUENCE delay_reason_seq START WITH 1 INCREMENT BY 1;
+
 -- 4. SHIFT_OPERATIONAL_LOG Table
 CREATE TABLE SHIFT_OPERATIONAL_LOG (
     operational_log_id NUMBER(19,0) PRIMARY KEY,
@@ -50,6 +63,7 @@ CREATE TABLE DELAY_LOG (
     delay_log_id NUMBER(19,0) PRIMARY KEY,
     operational_log_id NUMBER(19,0) NOT NULL,
     delay_type_id NUMBER(19,0) NOT NULL,
+    reason_id NUMBER(19,0) NULL,
     delay_hours NUMBER(10,0) NOT NULL,
     delay_minutes NUMBER(10,0) NOT NULL,
     delay_reason VARCHAR2(4000) NOT NULL,
@@ -60,7 +74,8 @@ CREATE TABLE DELAY_LOG (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_log_op_log FOREIGN KEY (operational_log_id) REFERENCES SHIFT_OPERATIONAL_LOG(operational_log_id) ON DELETE CASCADE,
-    CONSTRAINT fk_log_type FOREIGN KEY (delay_type_id) REFERENCES DELAY_TYPE(delay_type_id)
+    CONSTRAINT fk_log_type FOREIGN KEY (delay_type_id) REFERENCES DELAY_TYPE(delay_type_id),
+    CONSTRAINT fk_log_reason FOREIGN KEY (reason_id) REFERENCES DELAY_REASON(reason_id)
 );
 
 CREATE SEQUENCE delay_log_seq START WITH 1 INCREMENT BY 1;
