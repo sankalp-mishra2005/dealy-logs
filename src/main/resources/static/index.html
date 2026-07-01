@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BSP Delay Management System - Bhilai Steel Plant</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sticky Header Bar -->
+        <header class="header-bar">
+            <div class="logo-section">
+                <div class="logo-icon">BSP</div>
+                <div class="logo-text">
+                    <h1>Delay Management System</h1>
+                    <span>Plate Mill Section • MIS Dashboard</span>
+                </div>
+            </div>
+            
+            <!-- Main Navigation Tabs -->
+            <nav class="nav-tabs">
+                <button class="tab-btn active" id="btn-entry" onclick="switchScreen('entry')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z"></path></svg>
+                    Delay Entry Form
+                </button>
+                <button class="tab-btn" id="btn-report" onclick="switchScreen('report')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                    Delay Analysis Report
+                </button>
+
+            </nav>
+
+            <!-- User Status / Corporate Details -->
+            <div class="user-info">
+                <span class="status-indicator"></span>
+                <span><strong>Oracle DB Mode</strong></span>
+                <button class="btn btn-sm btn-secondary" onclick="resetDatabaseToSeeds()" style="height: 28px; padding: 0 0.5rem; font-size: 0.75rem; border-radius: 4px;">Reset Seeds</button>
+            </div>
+        </header>
+
+        <!-- Main Body -->
+        <main>
+            
+            <!-- SCREEN 1: DELAY ENTRY FORM -->
+            <section id="screen-entry" class="screen-panel active">
+                <div style="display: grid; grid-template-columns: 3fr 1fr; gap: 2rem;">
+                    
+                    <!-- Left Column: Entry Form and Entered Table -->
+                    <div style="display: flex; flex-direction: column; gap: 2rem;">
+                        <div class="card">
+                            <div class="card-header">
+                                <h2 class="card-title">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                    Log Unplanned/Planned Delay Event
+                                </h2>
+                                <span class="card-subtitle">All fields are logged to Oracle database</span>
+                            </div>
+                            <div class="card-body">
+                                <form id="delay-entry-form" onsubmit="saveDelayEvent(event)">
+                                    <input type="hidden" id="entry-log-id">
+                                    <div class="form-grid">
+                                        <!-- Date Select -->
+                                        <div class="form-group">
+                                            <label for="entry-date">Date of Delay</label>
+                                            <input type="date" id="entry-date" required>
+                                        </div>
+                                        
+                                        <!-- Shop Select (Fixed to Plate Mill) -->
+                                        <div class="form-group">
+                                            <label>Shop</label>
+                                            <div class="custom-select-wrapper" id="entry-shop-dropdown">
+                                                <div class="custom-select-trigger">
+                                                    <span class="custom-select-text">Plate Mill</span>
+                                                    <span class="custom-select-arrow"></span>
+                                                </div>
+                                                <div class="custom-select-options-container">
+                                                    <div class="custom-select-search-box">
+                                                        <input type="text" class="custom-select-search-input" placeholder="Search Shop...">
+                                                    </div>
+                                                    <div class="custom-select-options" id="entry-shop-options">
+                                                        <div class="custom-select-option selected" data-value="1">Plate Mill</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Shop Area Select -->
+                                        <div class="form-group">
+                                            <label>Shop Area</label>
+                                            <div class="custom-select-wrapper" id="entry-area-dropdown">
+                                                <div class="custom-select-trigger">
+                                                    <span class="custom-select-text">Select Area...</span>
+                                                    <span class="custom-select-arrow"></span>
+                                                </div>
+                                                <div class="custom-select-options-container">
+                                                    <div class="custom-select-search-box">
+                                                        <input type="text" class="custom-select-search-input" placeholder="Search Area...">
+                                                    </div>
+                                                    <div class="custom-select-options" id="entry-area-options">
+                                                        <!-- Loaded dynamically -->
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Delay Type Select -->
+                                        <div class="form-group">
+                                            <label>Delay Type</label>
+                                            <div class="custom-select-wrapper" id="entry-type-dropdown">
+                                                <div class="custom-select-trigger">
+                                                    <span class="custom-select-text">Select Type...</span>
+                                                    <span class="custom-select-arrow"></span>
+                                                </div>
+                                                <div class="custom-select-options-container">
+                                                    <div class="custom-select-search-box">
+                                                        <input type="text" class="custom-select-search-input" placeholder="Search Type...">
+                                                    </div>
+                                                    <div class="custom-select-options" id="entry-type-options">
+                                                        <!-- Loaded dynamically -->
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Shift (Simple String Dropdown) -->
+                                        <div class="form-group">
+                                            <label for="entry-shift">Shift</label>
+                                            <select id="entry-shift" class="form-control" required style="height: 38px; width: 100%; border-radius: 6px; border: 1px solid var(--border-color); background-color: var(--card-bg);">
+                                                <option value="A Shift">A Shift</option>
+                                                <option value="B Shift">B Shift</option>
+                                                <option value="C Shift">C Shift</option>
+                                                <option value="General Shift">General Shift</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Start Time -->
+                                        <div class="form-group">
+                                            <label for="entry-start-time">Start Time</label>
+                                            <input type="time" id="entry-start-time" class="form-control" required style="height: 38px; width: 100%; border-radius: 6px; border: 1px solid var(--border-color); background-color: var(--card-bg);" onchange="onTimeChange()">
+                                        </div>
+
+                                        <!-- End Time -->
+                                        <div class="form-group">
+                                            <label for="entry-end-time">End Time</label>
+                                            <input type="time" id="entry-end-time" class="form-control" required style="height: 38px; width: 100%; border-radius: 6px; border: 1px solid var(--border-color); background-color: var(--card-bg);" onchange="onTimeChange()">
+                                        </div>
+
+                                        <!-- Calculated Duration (Read-only) -->
+                                        <div class="form-group">
+                                            <label for="entry-duration">Duration (HH:MM)</label>
+                                            <input type="text" id="entry-duration" class="form-control" readonly placeholder="00:00" style="height: 38px; width: 100%; border-radius: 6px; border: 1px solid var(--border-color); background-color: var(--card-bg-secondary); font-weight: 600; color: var(--primary);">
+                                        </div>
+
+                                        <!-- Remarks textarea -->
+                                        <div class="form-group full-width">
+                                            <label for="entry-remarks">Remarks & Root Cause Analysis</label>
+                                            <textarea id="entry-remarks" rows="3" placeholder="Provide detailed delay breakdown description for Oracle analysis logging..." required></textarea>
+                                        </div>
+                                    </div>
+
+                                    <!-- Form Action Buttons -->
+                                    <div class="btn-group">
+                                        <button type="button" class="btn btn-secondary" onclick="clearEntryForm()">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path><line x1="18" y1="9" x2="12" y2="15"></line><line x1="12" y1="9" x2="18" y2="15"></line></svg>
+                                            Clear Form
+                                        </button>
+                                        <button type="submit" class="btn btn-primary">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                                            Save Delay Log
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- Table Card showing logged delays -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h2 class="card-title">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                                    Entered Delay Events Log
+                                </h2>
+                                <span class="card-subtitle">Active transactions stored in database</span>
+                            </div>
+                            <div class="card-body" style="padding: 0;">
+                                <div class="table-responsive">
+                                    <table class="premium-table" id="entered-records-table">
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 100px;">Date</th>
+                                                <th style="width: 90px;">Shift</th>
+                                                <th style="width: 100px;">Area</th>
+                                                <th style="width: 110px;">Delay Type</th>
+                                                <th style="width: 110px; text-align: center;">Time Range</th>
+                                                <th style="width: 80px; text-align: right;">Duration</th>
+                                                <th>Remarks / Root Cause</th>
+                                                <th style="width: 140px; text-align: center;">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="entered-records-body">
+                                            <!-- Dynamic entries -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Operating Metrics Config (Available Hours, Production Tonnage) -->
+                    <div style="display: flex; flex-direction: column; gap: 2rem;">
+                        <div class="card">
+                            <div class="card-header">
+                                <h2 class="card-title" style="font-size: 1.05rem;">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.6 1.5z"></path></svg>
+                                    Operational Inputs
+                                </h2>
+                            </div>
+                            <div class="card-body" style="padding: 1.25rem;">
+                                <p style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 1rem; line-height: 1.4;">
+                                    Tonnage and Shift Available Hours for calculating target norms, availability, and utilization.
+                                </p>
+                                
+                                <div class="form-group" style="margin-bottom: 1rem;">
+                                    <label for="metrics-date">Selected Date</label>
+                                    <input type="date" id="metrics-date" onchange="loadDayMetrics()">
+                                </div>
+                                
+                                <!-- Mill Settings Box -->
+                                <div class="config-box" style="margin-bottom: 1rem;">
+                                    <h4>Mill Section Metrics</h4>
+                                    <div class="form-group" style="margin-bottom: 0.75rem;">
+                                        <label style="font-size: 0.75rem;">Available Hours</label>
+                                        <input type="number" id="metrics-mill-avail" min="0" max="24" step="0.1" value="24.0" style="height: 34px; font-size: 0.85rem;">
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.75rem;">Production Tonnage (T)</label>
+                                        <input type="number" id="metrics-mill-prod" min="0" value="4000" style="height: 34px; font-size: 0.85rem;">
+                                    </div>
+                                </div>
+
+                                <!-- Norm Settings Box -->
+                                <div class="config-box" style="margin-bottom: 1.25rem;">
+                                    <h4>Norm Section Metrics</h4>
+                                    <div class="form-group" style="margin-bottom: 0.75rem;">
+                                        <label style="font-size: 0.75rem;">Available Hours</label>
+                                        <input type="number" id="metrics-norm-avail" min="0" max="24" step="0.1" value="24.0" style="height: 34px; font-size: 0.85rem;">
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size: 0.75rem;">Production Tonnage (T)</label>
+                                        <input type="number" id="metrics-norm-prod" min="0" value="600" style="height: 34px; font-size: 0.85rem;">
+                                    </div>
+                                </div>
+
+                                <button class="btn btn-primary" onclick="saveDayMetrics()" style="width: 100%; height: 38px; font-size: 0.85rem;">
+                                    Update Metrics
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- SCREEN 2: DELAY ANALYSIS REPORT -->
+            <section id="screen-report" class="screen-panel">
+                
+                <!-- Report Filter Bar -->
+                <div class="report-filter-bar" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) 100px; gap: 1rem;">
+                    <!-- Shop Filter -->
+                    <div class="form-group">
+                        <label>Shop</label>
+                        <select id="report-shop-filter" class="form-control" style="height: 38px; border-radius: 6px;" onchange="onReportFilterChange()">
+                            <option value="1" selected>Plate Mill</option>
+                        </select>
+                    </div>
+
+                    <!-- Area Filter -->
+                    <div class="form-group">
+                        <label>Shop Area</label>
+                        <select id="report-area-filter" class="form-control" style="height: 38px; border-radius: 6px;" onchange="onReportFilterChange()">
+                            <option value="All">All Areas</option>
+                            <!-- Loaded dynamically -->
+                        </select>
+                    </div>
+
+                    <!-- Report Type -->
+                    <div class="form-group">
+                        <label>Report Type</label>
+                        <select id="report-period-type" class="form-control" style="height: 38px; border-radius: 6px;" onchange="onReportPeriodTypeChange()">
+                            <option value="MONTHLY" selected>Monthly</option>
+                            <option value="CUSTOM">Custom Range</option>
+                        </select>
+                    </div>
+
+                    <!-- Conditional Date Filter Inputs -->
+                    <div class="form-group" id="report-date-container" style="display: none;">
+                        <label>Date</label>
+                        <input type="date" id="report-date-input" class="form-control" style="height: 38px; border-radius: 6px;" onchange="onReportFilterChange()">
+                    </div>
+
+                    <div class="form-group" id="report-month-container">
+                        <label>Month</label>
+                        <input type="month" id="report-month-input" class="form-control" style="height: 38px; border-radius: 6px;" onchange="onReportFilterChange()">
+                    </div>
+
+                    <div class="form-group" id="report-year-container" style="display: none;">
+                        <label>Year</label>
+                        <select id="report-year-input" class="form-control" style="height: 38px; border-radius: 6px;" onchange="onReportFilterChange()">
+                            <!-- Loaded dynamically -->
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="report-range-container" style="display: none; flex: 2; flex-direction: row; gap: 0.5rem;">
+                        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                            <label>From Date</label>
+                            <input type="date" id="report-from-date" class="form-control" style="height: 38px; border-radius: 6px;" onchange="onReportFilterChange()">
+                        </div>
+                        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                            <label>To Date</label>
+                            <input type="date" id="report-to-date" class="form-control" style="height: 38px; border-radius: 6px;" onchange="onReportFilterChange()">
+                        </div>
+                    </div>
+
+                    <!-- Delay Type Filter -->
+                    <div class="form-group">
+                        <label>Delay Type</label>
+                        <select id="report-type-filter" class="form-control" style="height: 38px; border-radius: 6px;" onchange="onReportFilterChange()">
+                            <option value="All">All Types</option>
+                            <!-- Loaded dynamically -->
+                        </select>
+                    </div>
+
+                    <!-- Shift Filter -->
+                    <div class="form-group">
+                        <label>Shift</label>
+                        <select id="report-shift-filter" class="form-control" style="height: 38px; border-radius: 6px;" onchange="onReportFilterChange()">
+                            <option value="All">All Shifts</option>
+                            <option value="A Shift">A Shift</option>
+                            <option value="B Shift">B Shift</option>
+                            <option value="C Shift">C Shift</option>
+                            <option value="General Shift">General Shift</option>
+                        </select>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="generateDPRReport()" style="align-self: flex-end; height: 38px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        Refresh
+                    </button>
+                </div>
+
+                <!-- KPI Cards summary at the top of report -->
+                <div class="kpi-grid">
+                    <div class="kpi-card kpi-mill">
+                        <span class="kpi-title">Mill Availability (MTD)</span>
+                        <div class="kpi-value" id="kpi-rep-mill-avail">85.4%</div>
+                        <span class="kpi-subtitle" id="kpi-rep-mill-avail-lbl">Target Norm: 80.0%</span>
+                    </div>
+                    <div class="kpi-card kpi-mill">
+                        <span class="kpi-title">Mill Utilization (MTD)</span>
+                        <div class="kpi-value" id="kpi-rep-mill-util">91.2%</div>
+                        <span class="kpi-subtitle" id="kpi-rep-mill-util-lbl">Target Norm: 92.0%</span>
+                    </div>
+                    <div class="kpi-card kpi-norm">
+                        <span class="kpi-title">Norm Availability (MTD)</span>
+                        <div class="kpi-value" id="kpi-rep-norm-avail">98.5%</div>
+                        <span class="kpi-subtitle" id="kpi-rep-norm-avail-lbl">Target Norm: 80.0%</span>
+                    </div>
+                    <div class="kpi-card kpi-norm">
+                        <span class="kpi-title">Norm Utilization (MTD)</span>
+                        <div class="kpi-value" id="kpi-rep-norm-util">95.6%</div>
+                        <span class="kpi-subtitle" id="kpi-rep-norm-util-lbl">Target Norm: 92.0%</span>
+                    </div>
+                </div>
+
+                <!-- DPR Report layout card -->
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h2 class="card-title">Plate Mill Production Division - Daily Production Report (DPR)</h2>
+                            <span class="card-subtitle" id="report-date-heading">Reporting Month: June 2026 • Date: 2026-06-20</span>
+                        </div>
+                        <div class="btn-group" style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-secondary" onclick="exportDPRReportExcel()">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                Export Excel (.xlsx)
+                            </button>
+                            <button class="btn btn-primary" onclick="exportDelayLogPdf()" style="background-color: var(--accent); border-color: var(--accent); display: inline-flex; align-items: center; gap: 0.25rem;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                Export Delay Logs (PDF)
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body" style="padding: 0;">
+                        <div class="table-responsive">
+                            <table class="premium-table dpr-table" id="dpr-report-table">
+                                <thead>
+                                    <tr>
+                                        <th rowspan="2" style="vertical-align: middle; width: 280px; border-right: 1.5px solid var(--border-color);">Delay Type / Parameter</th>
+                                        <th colspan="2" class="text-center mill-col-group" style="border-right: 1.5px solid var(--border-color);" id="th-mill-section">Mill Section</th>
+                                        <th colspan="2" class="text-center norm-col-group" id="th-norm-section">Normalizing Furnace</th>
+                                    </tr>
+                                    <tr>
+                                        <th class="text-right mill-col-group" style="width: 180px;" id="th-mill-day">Mill Day (HH:MM)</th>
+                                        <th class="text-right mill-col-group" style="width: 180px; border-right: 1.5px solid var(--border-color);" id="th-mill-month">Mill Month (HH:MM)</th>
+                                        <th class="text-right norm-col-group" style="width: 180px;" id="th-norm-day">Norm Day (HH:MM)</th>
+                                        <th class="text-right norm-col-group" style="width: 180px;" id="th-norm-month">Norm Month (HH:MM)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr data-type="Planned">
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Planned</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-planned">00:00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-planned" style="border-right: 1.5px solid var(--border-color);">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-planned">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-planned">00:00</td>
+                                    </tr>
+                                    <tr data-type="Electrical">
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Electrical</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-electrical">00:00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-electrical" style="border-right: 1.5px solid var(--border-color);">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-electrical">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-electrical">00:00</td>
+                                    </tr>
+                                    <tr data-type="Mechanical">
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Mechanical</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-mechanical">00:00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-mechanical" style="border-right: 1.5px solid var(--border-color);">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-mechanical">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-mechanical">00:00</td>
+                                    </tr>
+                                    <tr data-type="Operation">
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Operation</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-operation">00:00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-operation" style="border-right: 1.5px solid var(--border-color);">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-operation">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-operation">00:00</td>
+                                    </tr>
+                                    <tr data-type="SBS">
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">SBS</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-sbs">00:00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-sbs" style="border-right: 1.5px solid var(--border-color);">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-sbs">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-sbs">00:00</td>
+                                    </tr>
+                                    <tr data-type="Fuel/EMD">
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Fuel/EMD</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-fuelemd">00:00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-fuelemd" style="border-right: 1.5px solid var(--border-color);">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-fuelemd">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-fuelemd">00:00</td>
+                                    </tr>
+                                    <tr data-type="Power">
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Power</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-power">00:00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-power" style="border-right: 1.5px solid var(--border-color);">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-power">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-power">00:00</td>
+                                    </tr>
+                                    <tr data-type="MSDS">
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">MSDS</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-msds">00:00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-msds" style="border-right: 1.5px solid var(--border-color);">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-msds">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-msds">00:00</td>
+                                    </tr>
+                                    <tr data-type="Others" style="border-bottom: 2px solid var(--primary-light);">
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Others</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-others">00:00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-others" style="border-right: 1.5px solid var(--border-color);">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-others">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-others">00:00</td>
+                                    </tr>
+
+                                    <!-- DPR Totals Rows -->
+                                    <tr class="total-row">
+                                        <td style="border-right: 1.5px solid var(--border-color);">Total</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-total">00:00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-total" style="border-right: 1.5px solid var(--border-color);">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-total">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-total">00:00</td>
+                                    </tr>
+                                    <tr class="subtotal-row">
+                                        <td style="border-right: 1.5px solid var(--border-color);">Controllable</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-controllable">00:00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-controllable" style="border-right: 1.5px solid var(--border-color);">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-controllable">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-controllable">00:00</td>
+                                    </tr>
+                                    <tr class="subtotal-row" style="border-bottom: 2px solid var(--primary-light);">
+                                        <td style="border-right: 1.5px solid var(--border-color);">Non-Controllable</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-noncontrollable">00:00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-noncontrollable" style="border-right: 1.5px solid var(--border-color);">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-noncontrollable">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-noncontrollable">00:00</td>
+                                    </tr>
+
+                                    <!-- Operational details and performance metrics -->
+                                    <tr>
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Available Hours</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-avail">24:00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-avail" style="border-right: 1.5px solid var(--border-color);">000:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-avail">24:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-avail">000:00</td>
+                                    </tr>
+                                    <tr style="font-weight: 500;">
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Hot Hours</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-hot">00:00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-hot" style="border-right: 1.5px solid var(--border-color);">000:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-hot">00:00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-hot">000:00</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Production/HR (T/H)</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-prodhr">0.0</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-prodhr" style="border-right: 1.5px solid var(--border-color);">0.0</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-prodhr">0.0</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-prodhr">0.0</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Utilization %</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-util">0.0%</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-util" style="border-right: 1.5px solid var(--border-color);">0.0%</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-util">0.0%</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-util">0.0%</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1.5px solid var(--border-color);">
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Availability %</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-availability">0.0%</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-availability" style="border-right: 1.5px solid var(--border-color);">0.0%</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-availability">0.0%</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-availability">0.0%</td>
+                                    </tr>
+
+                                    <tr>
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Avg Hot Hours (H/Day)</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-avghot">—</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-avghot" style="border-right: 1.5px solid var(--border-color);">0.0</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-avghot">—</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-avghot">0.0</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">Working Days</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-working">0.00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-working">0.00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-working">0.00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-working">0.00</td>
+                                    </tr>
+                                    <tr style="border-bottom: 2px solid var(--primary-light);">
+                                        <td style="font-weight: 600; border-right: 1.5px solid var(--border-color);">No Of Work Shift</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-day-shifts">0.00</td>
+                                        <td class="text-right mill-col-group" id="dpr-mill-month-shifts" style="border-right: 1.5px solid var(--border-color);">0.00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-day-shifts">0.00</td>
+                                        <td class="text-right norm-col-group" id="dpr-norm-month-shifts">0.00</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Professional Dashboard Charts Grid (Chart.js) -->
+                <div class="charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.5rem; margin-top: 2rem;">
+                    <div class="card">
+                        <div class="card-header"><h3 class="card-title">Daily Delay Trend (Hours)</h3></div>
+                        <div class="card-body"><canvas id="chart-daily-trend" style="width: 100%; height: 260px;"></canvas></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header"><h3 class="card-title">Delay Type Distribution (Hours)</h3></div>
+                        <div class="card-body"><canvas id="chart-type-distribution" style="width: 100%; height: 260px;"></canvas></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header"><h3 class="card-title">Monthly Delay Trend (Hours)</h3></div>
+                        <div class="card-body"><canvas id="chart-monthly-trend" style="width: 100%; height: 260px;"></canvas></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header"><h3 class="card-title">Top 5 Delay Types (Hours)</h3></div>
+                        <div class="card-body"><canvas id="chart-top-delays" style="width: 100%; height: 260px;"></canvas></div>
+                    </div>
+                </div>
+            </section>
+
+
+        </main>
+    </div>
+
+    <!-- Read-Only Detailed View Modal -->
+    <div id="view-detail-modal" class="modal-overlay" onclick="closeViewModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modal-title">Delay Log Specification</h3>
+                <span class="close-modal-btn" onclick="closeViewModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="modal-body-content"></div>
+        </div>
+    </div>
+
+    <!-- Chart.js and Core Controller Logic Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
