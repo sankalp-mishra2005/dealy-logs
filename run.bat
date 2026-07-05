@@ -16,5 +16,5 @@ echo Starting Spring Boot on http://localhost:8085
 echo Press Ctrl+C to stop the server.
 echo.
 
-%MVN% spring-boot:run
+call %MVN% spring-boot:run
 pause

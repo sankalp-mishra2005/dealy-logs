@@ -13,8 +13,6 @@ import lombok.*;
 public class DelayType {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "delay_type_seq_gen")
-    @SequenceGenerator(name = "delay_type_seq_gen", sequenceName = "delay_type_seq", allocationSize = 1)
     @Column(name = "delay_type_id")
     private Long delayTypeId;
 

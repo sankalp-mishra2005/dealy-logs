@@ -1266,10 +1266,6 @@ async function saveDayMetrics() {
     }
 }
 
-function resetDatabaseToSeeds() {
-    alert("Database seeds are synchronized on application startup.");
-}
-
 
 // ---- 13. Application Initialisation Routine ----
 async function initApp() {

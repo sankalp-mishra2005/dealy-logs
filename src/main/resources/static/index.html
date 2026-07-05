@@ -11,10 +11,10 @@
         <!-- Sticky Header Bar -->
         <header class="header-bar">
             <div class="logo-section">
-                <div class="logo-icon">BSP</div>
+                <img src="sail_logo.svg" alt="SAIL Logo" style="height: 38px; width: auto; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));">
                 <div class="logo-text">
                     <h1>Delay Management System</h1>
-                    <span>Plate Mill Section • MIS Dashboard</span>
+                    <span>MIS Dashboard</span>
                 </div>
             </div>
             
@@ -35,7 +35,6 @@
             <div class="user-info">
                 <span class="status-indicator"></span>
                 <span><strong>Oracle DB Mode</strong></span>
-                <button class="btn btn-sm btn-secondary" onclick="resetDatabaseToSeeds()" style="height: 28px; padding: 0 0.5rem; font-size: 0.75rem; border-radius: 4px;">Reset Seeds</button>
             </div>
         </header>
 
@@ -369,9 +368,10 @@
                 </div>
 
                 <!-- DPR Report layout card -->
+                <span id="report-date-heading" style="display: none;"></span>
                 <div class="card" id="dpr-report-card">
                      <!-- Injected dynamically by PlateMillReportRenderer or SMSReportRenderer -->
-                </div>  </div>
+                </div>
 
                 <!-- Professional Dashboard Charts Grid (Chart.js) -->
                 <div class="charts-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.5rem; margin-top: 2rem;">
